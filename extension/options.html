@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Shadow Threads Settings</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 0; background: #0b0f19; color: #e7eaf0; }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 24px; }
+    .card { background: #121a2a; border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .col { flex: 1; min-width: 280px; }
+    h1 { font-size: 18px; margin: 0 0 12px; }
+    h2 { font-size: 14px; margin: 0 0 10px; opacity: 0.9; }
+    label { display: block; font-size: 12px; opacity: 0.8; margin-bottom: 6px; }
+    input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12); background: #0b1221; color: #e7eaf0; }
+    button { padding: 10px 12px; border-radius: 10px; border: 0; background: #6d5efc; color: white; cursor: pointer; }
+    button.secondary { background: rgba(255,255,255,0.10); }
+    .kv { font-size: 13px; line-height: 1.7; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: rgba(255,255,255,0.10); margin-left: 8px; }
+    .ok { background: rgba(46, 204, 113, 0.18); }
+    .bad { background: rgba(231, 76, 60, 0.18); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .muted { opacity: 0.75; }
+    .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .hr { height: 1px; background: rgba(255,255,255,0.08); margin: 12px 0; }
+    .small { font-size: 12px; opacity: 0.8; }
+
+    /* History */
+    .table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .table th, .table td { padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); vertical-align: top; }
+    .table th { text-align: left; opacity: 0.85; font-weight: 600; }
+    .btn-mini { padding: 6px 10px; border-radius: 10px; font-size: 12px; }
+    .cell-id { max-width: 260px; word-break: break-all; }
+    .cell-snippet { max-width: 460px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .panel { background: #0b1221; border: 1px solid rgba(255,255,255,0.10); border-radius: 12px; padding: 12px; }
+    textarea { width: 100%; min-height: 220px; resize: vertical; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12); background: #0b1221; color: #e7eaf0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Shadow Threads · Settings & Debug</h1>
+
+    <div class="card">
+      <h2>Settings</h2>
+      <div class="row">
+        <div class="col">
+          <label>Backend Server URL</label>
+          <input id="serverUrl" placeholder="http://localhost:3001" />
+          <div class="small muted" style="margin-top:6px;">
+            修改后会立即写入 <span class="mono">chrome.storage.local</span>，不影响当前稳定请求链路。
+          </div>
+        </div>
+        <div class="col">
+          <label>Device ID (read-only)</label>
+          <input id="deviceId" disabled />
+        </div>
+      </div>
+      <div class="hr"></div>
+      <div class="actions">
+        <button id="saveBtn">保存</button>
+        <button id="reloadBtn" class="secondary">重新加载</button>
+        <span id="saveHint" class="small muted"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Backend Health</h2>
+      <div class="actions">
+        <button id="healthBtn" class="secondary">检查</button>
+        <span id="healthPill" class="pill">unknown</span>
+      </div>
+      <div id="healthText" class="kv muted" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Debug · Last Request</h2>
+      <div class="actions">
+        <button id="refreshDebugBtn" class="secondary">刷新</button>
+        <span class="small muted">（只读旁路信息，不会改变请求链路）</span>
+      </div>
+      <div id="debugText" class="kv mono" style="margin-top:10px; white-space: pre-wrap;"></div>
+    </div>
+
+    <!-- ✅ History -->
+    <div class="card">
+      <h2>History · Subthreads</h2>
+      <div class="actions">
+        <button id="refreshHistoryBtn" class="secondary">刷新列表</button>
+        <span id="historyHint" class="small muted"></span>
+      </div>
+
+      <div style="margin-top:10px; overflow:auto;">
+        <table class="table" id="historyTable">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Provider/Model</th>
+              <th>Platform</th>
+              <th>Selection</th>
+              <th>Time</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="historyTbody">
+            <tr><td class="muted" colspan="6">点击“刷新列表”加载历史</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="panel">
+        <div class="actions" style="justify-content: space-between;">
+          <div class="small muted">Selected Subthread Detail (JSON/messages)</div>
+          <button id="copyDetailBtn" class="secondary btn-mini">复制</button>
+        </div>
+        <div style="margin-top:10px;">
+          <textarea id="detailBox" readonly placeholder="选择某条记录后，这里会显示详情（messages 等）"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="small muted">
+      Tips：如果你看到 <span class="mono">fallbackToDeepSeek: true</span>，说明本次实际响应来自 DeepSeek（通常为 provider 失败后的兜底）。
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

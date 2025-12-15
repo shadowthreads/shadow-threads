@@ -19,7 +19,7 @@ export type LLMProvider =
   | 'GOOGLE'
   | 'GROQ'
   | 'CUSTOM'
-  | 'DEEPSEEK'; // 你后端提到支持 fallback，补上枚举
+  | 'DEEPSEEK'; // ✅ 兼容 fallback 记录
 
 export interface PlatformConfig {
   platform: SupportedPlatform;
@@ -116,16 +116,53 @@ export interface ApiResponse<T> {
 }
 
 // ============================================
-// API Key（扩展 UI 用）
+// Options / Debug / History 专用
 // ============================================
 
-export interface StoredApiKey {
+export interface BackendHealthStatus {
+  ok: boolean;
+  serverUrl: string;
+  checkedAt: number;
+  latencyMs?: number;
+  statusText?: string;
+  error?: string;
+}
+
+export interface DebugStatus {
+  serverUrl: string;
+  deviceId: string;
+  lastRequest?: LastRequestSnapshot | null;
+}
+
+export interface LastRequestSnapshot {
+  requestId: string;
+  kind: 'CREATE_SUBTHREAD' | 'CONTINUE_SUBTHREAD';
+  startedAt: number;
+  finishedAt?: number;
+  durationMs?: number;
+
+  tabId?: number;
+  conversationUrl?: string;
+
+  providerWanted?: LLMProvider;
+  modelWanted?: string;
+
+  // 后端实际返回/记录（如果后端能返回）
+  providerActual?: LLMProvider;
+  modelActual?: string;
+  fallbackToDeepSeek?: boolean;
+
+  success?: boolean;
+  error?: string;
+  httpStatus?: number;
+}
+
+export interface SubthreadListItem {
   id: string;
-  provider: LLMProvider;
-  label?: string;
-  isDefault: boolean;
-  // 后端通常不会回传明文 key，这里用 masked
-  maskedKey: string; // e.g. sk-****abcd
+  provider?: LLMProvider;
+  model?: string;
+  platform?: string;
+  selectionText?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -142,19 +179,18 @@ export type MessageType =
   | 'GET_SETTINGS'
   | 'SAVE_SETTINGS'
   | 'PING'
-  | 'TOGGLE_SIDEBAR'
-  // ✅ API Key 管理
-  | 'LIST_API_KEYS'
-  | 'CREATE_API_KEY'
-  | 'DELETE_API_KEY'
-  | 'SET_DEFAULT_API_KEY'
-  | 'VALIDATE_API_KEY';
+  // ✅ Options/Debug/History
+  | 'GET_DEBUG_STATUS'
+  | 'CHECK_BACKEND_HEALTH'
+  | 'OPEN_OPTIONS_PAGE'
+  | 'FETCH_SUBTHREADS'
+  | 'FETCH_SUBTHREAD_DETAIL';
 
 export interface ExtensionMessage<T = unknown> {
   type: MessageType;
-  requestId?: string;
   data?: T;
   tabId?: number;
+  requestId?: string;
 }
 
 // ============================================
@@ -169,9 +205,6 @@ export interface ExtensionSettings {
   language: string;
   showFloatingButton: boolean;
   sidebarWidth: number;
-
-  softTimeoutMs: number; // 只提示
-  hardTimeoutMs: number; // 真正超时
 }
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
@@ -180,7 +213,5 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   theme: 'auto',
   language: 'zh-CN',
   showFloatingButton: true,
-  sidebarWidth: 400,
-  softTimeoutMs: 30_000,
-  hardTimeoutMs: 5 * 60_000
+  sidebarWidth: 400
 };

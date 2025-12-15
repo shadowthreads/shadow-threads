@@ -1,64 +1,82 @@
-/**
- * Shadow Threads Extension Build Script
- * 使用 esbuild 打包扩展
- */
-
+/* eslint-disable no-console */
 const esbuild = require('esbuild');
+const fs = require('fs');
 const path = require('path');
 
-const isWatch = process.argv.includes('--watch');
+const root = __dirname;
+const srcDir = path.join(root, 'src');
+const distDir = path.join(root, 'dist');
 
-// 通用构建配置
-const commonConfig = {
-  bundle: true,
-  format: 'iife',
-  target: ['chrome90', 'firefox90', 'edge90'],
-  sourcemap: process.env.NODE_ENV !== 'production',
-  minify: process.env.NODE_ENV === 'production',
-};
+function ensureDir(p) {
+  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+}
 
-// Content Script 构建
-const contentBuild = {
-  ...commonConfig,
-  entryPoints: ['src/content.ts'],
-  outfile: 'dist/content.js',
-};
-
-// Background Service Worker 构建
-const backgroundBuild = {
-  ...commonConfig,
-  entryPoints: ['src/background.ts'],
-  outfile: 'dist/background.js',
-};
-
-async function build() {
+function copyFileSafe(from, to) {
   try {
-    if (isWatch) {
-      // Watch 模式
-      const ctxContent = await esbuild.context(contentBuild);
-      const ctxBackground = await esbuild.context(backgroundBuild);
-      
-      await Promise.all([
-        ctxContent.watch(),
-        ctxBackground.watch()
-      ]);
-      
-      console.log('👀 Watching for changes...');
-    } else {
-      // 单次构建
-      await Promise.all([
-        esbuild.build(contentBuild),
-        esbuild.build(backgroundBuild)
-      ]);
-      
-      console.log('✅ Build completed!');
-      console.log('   - dist/content.js');
-      console.log('   - dist/background.js');
-    }
-  } catch (error) {
-    console.error('❌ Build failed:', error);
-    process.exit(1);
+    ensureDir(path.dirname(to));
+    fs.copyFileSync(from, to);
+  } catch (e) {
+    console.warn('[build] copy failed:', from, '->', to, e?.message || e);
   }
 }
 
-build();
+function copyDirSafe(fromDir, toDir) {
+  if (!fs.existsSync(fromDir)) return;
+  ensureDir(toDir);
+  const entries = fs.readdirSync(fromDir, { withFileTypes: true });
+  for (const ent of entries) {
+    const from = path.join(fromDir, ent.name);
+    const to = path.join(toDir, ent.name);
+    if (ent.isDirectory()) copyDirSafe(from, to);
+    else copyFileSafe(from, to);
+  }
+}
+
+function copyStatic() {
+  ensureDir(distDir);
+
+  // manifest
+  copyFileSafe(path.join(root, 'manifest.json'), path.join(distDir, 'manifest.json'));
+
+  // options.html
+  copyFileSafe(path.join(root, 'options.html'), path.join(distDir, 'options.html'));
+
+  // styles / icons（如存在）
+  copyDirSafe(path.join(root, 'styles'), path.join(distDir, 'styles'));
+  copyDirSafe(path.join(root, 'icons'), path.join(distDir, 'icons'));
+}
+
+async function build({ watch = false } = {}) {
+  ensureDir(distDir);
+  copyStatic();
+
+  const ctx = await esbuild.context({
+    entryPoints: {
+      background: path.join(srcDir, 'background.ts'),
+      content: path.join(srcDir, 'content.ts'),
+      options: path.join(srcDir, 'options.ts')
+    },
+    bundle: true,
+    outdir: distDir,
+    platform: 'browser',
+    target: ['chrome114', 'edge114'],
+    sourcemap: true,
+    format: 'iife',
+    logLevel: 'info'
+  });
+
+  if (watch) {
+    await ctx.watch();
+    console.log('[build] watching...');
+  } else {
+    await ctx.rebuild();
+    await ctx.dispose();
+    console.log('[build] done.');
+  }
+}
+
+const isWatch = process.argv.includes('--watch');
+build({ watch: isWatch }).catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

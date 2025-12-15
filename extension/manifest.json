@@ -3,12 +3,9 @@
   "name": "Shadow Threads",
   "version": "0.2.0",
   "description": "在 LLM 页面上创建影子子线程对话，深入探索而不污染主对话上下文。",
-  
-  "permissions": [
-    "storage",
-    "activeTab"
-  ],
-  
+
+  "permissions": ["storage", "activeTab", "tabs"],
+
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
@@ -17,11 +14,16 @@
     "https://poe.com/*",
     "http://localhost:3001/*"
   ],
-  
+
   "background": {
-    "service_worker": "dist/background.js"
+    "service_worker": "background.js"
   },
-  
+
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+
   "content_scripts": [
     {
       "matches": [
@@ -31,12 +33,12 @@
         "https://gemini.google.com/*",
         "https://poe.com/*"
       ],
-      "js": ["dist/content.js"],
+      "js": ["content.js"],
       "css": ["styles/content.css"],
       "run_at": "document_end"
     }
   ],
-  
+
   "action": {
     "default_title": "Shadow Threads",
     "default_icon": {
@@ -46,14 +48,14 @@
       "128": "icons/icon128.png"
     }
   },
-  
+
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  
+
   "web_accessible_resources": [
     {
       "resources": ["styles/*", "icons/*"],

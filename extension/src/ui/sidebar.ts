@@ -5,6 +5,10 @@
 
 import { SubthreadMessage, SubthreadResponse } from '../types';
 
+// ============================================
+// 侧边栏状态
+// ============================================
+
 interface SidebarState {
   isOpen: boolean;
   isLoading: boolean;
@@ -28,6 +32,10 @@ let sidebarElement: HTMLElement | null = null;
 function genRequestId(): string {
   return `st-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
+
+// ============================================
+// 侧边栏 HTML 结构
+// ============================================
 
 function createSidebarHTML(): string {
   return `
@@ -86,6 +94,10 @@ function createSidebarHTML(): string {
   `;
 }
 
+// ============================================
+// 侧边栏操作
+// ============================================
+
 export function initSidebar(): void {
   if (document.getElementById('st-sidebar')) return;
 
@@ -103,6 +115,15 @@ export function initSidebar(): void {
 function bindSidebarEvents(): void {
   document.getElementById('st-sidebar-close')?.addEventListener('click', closeSidebar);
   document.getElementById('st-send-btn')?.addEventListener('click', handleSend);
+
+  // ✅ 设置按钮：打开 Options Page（纯增量，不影响稳定链路）
+  document.getElementById('st-sidebar-settings')?.addEventListener('click', () => {
+    try {
+      chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS_PAGE' });
+    } catch {
+      // ignore
+    }
+  });
 
   const textarea = document.getElementById('st-input-textarea') as HTMLTextAreaElement;
   textarea?.addEventListener('keydown', (e) => {
