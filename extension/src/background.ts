@@ -412,8 +412,13 @@ async function handleBackendHealthCheck(): Promise<BackendHealthStatus> {
 }
 
 async function handleFetchSubthreads(limit: number): Promise<SubthreadListItem[]> {
+  // server 使用 page / pageSize，而不是 limit
+  const pageSize = limit;
+  const page = 1;
+
   const url = new URL(`${serverUrl}/api/v1/subthreads`);
-  url.searchParams.set('limit', String(limit));
+  url.searchParams.set('page', String(page));
+  url.searchParams.set('pageSize', String(pageSize));
 
   const res = await fetch(url.toString(), {
     method: 'GET',
@@ -423,23 +428,24 @@ async function handleFetchSubthreads(limit: number): Promise<SubthreadListItem[]
   });
 
   const json: any = await res.json();
+
   if (!json?.success) {
     throw new Error(json?.error?.message || `FETCH_SUBTHREADS failed (HTTP ${res.status})`);
   }
 
-  const items = json?.data?.items ?? json?.data ?? [];
+  const items = Array.isArray(json.data) ? json.data : [];
   if (!Array.isArray(items)) return [];
 
-  // 尽量做字段兼容映射（不依赖后端精确结构）
+  // 映射成 Options 需要的结构
   return items.map((x: any) => ({
-    id: x?.id || x?.subthreadId,
-    provider: x?.provider,
-    model: x?.model,
-    platform: x?.sourceContext?.platform ?? x?.platform,
-    selectionText: x?.sourceContext?.selectionText ?? x?.selectionText,
-    createdAt: x?.createdAt,
-    updatedAt: x?.updatedAt
-  })).filter((x: any) => !!x.id);
+    id: x.id,
+    provider: x.provider,
+    model: x.model,
+    platform: x.sourceContext?.platform,
+    selectionText: x.sourceContext?.selectionText,
+    createdAt: x.createdAt,
+    updatedAt: x.updatedAt
+  }));
 }
 
 async function handleFetchSubthreadDetail(subthreadId: string): Promise<any> {

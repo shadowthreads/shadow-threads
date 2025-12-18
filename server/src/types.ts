@@ -74,9 +74,13 @@ export interface SubthreadResponse {
   };
 }
 
-export interface ApiResponse<T> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
+
+  // ✅ 兼容 list 接口已经在返回的 meta
+  meta?: unknown;
+
   error?: {
     code: string;
     message: string;

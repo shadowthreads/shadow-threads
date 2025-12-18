@@ -3,8 +3,8 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { 
-  asyncHandler, 
+import {
+  asyncHandler,
   requireAuth,
   validate,
   createSubthreadSchema,
@@ -32,14 +32,14 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const input = req.body as CreateSubthreadInput;
     const userId = req.userId!;
-    
+
     const result = await subthreadService.createSubthread(userId, input);
-    
-    const response: ApiResponse = {
+
+    const response: ApiResponse<typeof result> = {
       success: true,
       data: result
     };
-    
+
     res.status(201).json(response);
   })
 );
@@ -55,10 +55,10 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const query = req.query as unknown as ListSubthreadsQuery;
     const userId = req.userId!;
-    
+
     const result = await subthreadService.listSubthreads(userId, query);
-    
-    const response: ApiResponse = {
+
+    const response: ApiResponse<typeof result.subthreads> = {
       success: true,
       data: result.subthreads,
       meta: {
@@ -67,7 +67,7 @@ router.get(
         total: result.total
       }
     };
-    
+
     res.json(response);
   })
 );
@@ -83,14 +83,14 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
     const userId = req.userId!;
-    
+
     const subthread = await subthreadService.getSubthread(userId, id);
-    
-    const response: ApiResponse = {
+
+    const response: ApiResponse<typeof subthread> = {
       success: true,
       data: subthread
     };
-    
+
     res.json(response);
   })
 );
@@ -102,22 +102,22 @@ router.get(
 router.post(
   '/:id/messages',
   requireAuth,
-  validate({ 
+  validate({
     params: idParamSchema,
-    body: continueSubthreadSchema 
+    body: continueSubthreadSchema
   }),
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
     const input = req.body as ContinueSubthreadInput;
     const userId = req.userId!;
-    
+
     const result = await subthreadService.continueSubthread(userId, id, input);
-    
-    const response: ApiResponse = {
+
+    const response: ApiResponse<typeof result> = {
       success: true,
       data: result
     };
-    
+
     res.json(response);
   })
 );
@@ -133,14 +133,14 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
     const userId = req.userId!;
-    
+
     await subthreadService.archiveSubthread(userId, id);
-    
-    const response: ApiResponse = {
+
+    const response: ApiResponse<{ message: string }> = {
       success: true,
       data: { message: 'Subthread archived' }
     };
-    
+
     res.json(response);
   })
 );
@@ -156,14 +156,14 @@ router.delete(
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
     const userId = req.userId!;
-    
+
     await subthreadService.deleteSubthread(userId, id);
-    
-    const response: ApiResponse = {
+
+    const response: ApiResponse<{ message: string }> = {
       success: true,
       data: { message: 'Subthread deleted' }
     };
-    
+
     res.json(response);
   })
 );

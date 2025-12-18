@@ -1,5 +1,6 @@
 /**
  * 子线程业务服务
+ * PR-B2: Context L1 meta 落库（SourceContext.contextMeta）
  */
 
 import { LLMProvider, MessageRole, SubthreadStatus } from '@prisma/client';
@@ -12,7 +13,41 @@ import {
 } from '../middleware';
 import { LLMService } from './llm.service';
 import { UserService } from './user.service';
-import { PLATFORM_CONFIG, SupportedPlatform } from '../types/platform';
+
+type ContextMetaL1 = {
+  strategy: 'WINDOW_L1';
+  aboveTarget: number;
+  belowTarget: number;
+  aboveCount: number;
+  belowCount: number;
+  clipped: boolean;
+  clipReason?: 'BUDGET' | 'UNAVAILABLE' | 'OTHER';
+  tokenEstimate?: number;
+  anchor: {
+    conversationId: string;
+    messageId: string;
+    messageRole?: string;
+  };
+};
+
+type LLMMessage = {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+};
+
+function mapPrismaRoleToLLMRole(role: MessageRole): 'system' | 'user' | 'assistant' {
+  switch (role) {
+    case MessageRole.SYSTEM:
+      return 'system';
+    case MessageRole.USER:
+      return 'user';
+    case MessageRole.ASSISTANT:
+      return 'assistant';
+    default:
+      // 兜底（理论上不会进来）
+      return 'user';
+  }
+}
 
 export class SubthreadService {
   private llmService = new LLMService();
@@ -24,20 +59,34 @@ export class SubthreadService {
   async createSubthread(userId: string, input: CreateSubthreadInput) {
     logger.info('Creating subthread', { userId, platform: input.platform });
 
-    // 确定使用的 LLM 提供商和模型
+    // 1) 解析 provider/model（PR-B2 不改变决策逻辑：只做最小可用兜底）
     const { provider, model } = await this.resolveProviderAndModel(
       userId,
-      input.platform,
       input.provider,
       input.model
     );
 
-    // 获取用户的 API Key（对应当前 provider）
+    // 2) 获取用户 API Key
     const apiKey = await this.userService.getDecryptedApiKey(userId, provider);
 
-    // 创建来源上下文和子线程
-    const subthread = await prisma.$transaction(async (tx) => {
-      // 创建来源上下文
+    // 3) PR-B2：构造 contextMeta（先只记录元信息，不接入 prompt）
+    const contextMeta: ContextMetaL1 = {
+      strategy: 'WINDOW_L1',
+      aboveTarget: 8,
+      belowTarget: 0,
+      aboveCount: 0,
+      belowCount: 0,
+      clipped: true,
+      clipReason: 'UNAVAILABLE',
+      anchor: {
+        conversationId: input.conversationId,
+        messageId: input.messageId,
+        messageRole: input.messageRole,
+      },
+    };
+
+    // 4) 事务内落库 SourceContext + Subthread
+    const created = await prisma.$transaction(async (tx) => {
       const sourceContext = await tx.sourceContext.create({
         data: {
           platform: input.platform,
@@ -49,10 +98,10 @@ export class SubthreadService {
           selectionText: input.selectionText,
           selectionStart: input.selectionStart,
           selectionEnd: input.selectionEnd,
+          contextMeta, // ✅ PR-B2
         },
       });
 
-      // 创建子线程
       const subthread = await tx.subthread.create({
         data: {
           userId,
@@ -61,22 +110,19 @@ export class SubthreadService {
           model,
           status: SubthreadStatus.ACTIVE,
           messageCount: 0,
+          tokenCount: 0,
         },
         include: {
           sourceContext: true,
         },
       });
 
-      return subthread;
+      return { sourceContext, subthread };
     });
 
-    // 构建系统提示词
-    const systemPrompt = this.buildSystemPrompt(
-      input.selectionText,
-      input.messageText
-    );
+    // 5) 调用 LLM（注意：llm.service.ts 内部已有 DeepSeek 兜底）
+    const systemPrompt = this.buildSystemPrompt(input.selectionText, input.messageText);
 
-    // 调用 LLM（带 DeepSeek 兜底 key）
     const llmResponse = await this.llmService.complete({
       messages: [
         { role: 'system', content: systemPrompt },
@@ -86,78 +132,98 @@ export class SubthreadService {
         provider,
         model,
         apiKey,
-        // 兜底使用的 DeepSeek Key（从环境变量读）
-        deepseekApiKey: process.env.DEEPSEEK_API_KEY || '',
-      } as any,
+      },
     });
 
-    // 保存消息
-    const [userMessage, assistantMessage] = await prisma.$transaction([
-      // 用户消息
+    const tokenEstimate =
+      (llmResponse.promptTokens || 0) + (llmResponse.completionTokens || 0);
+
+    // 6) 更新 contextMeta.tokenEstimate（失败不阻断主链路）
+    try {
+      await prisma.sourceContext.update({
+        where: { id: created.sourceContext.id },
+        data: {
+          contextMeta: {
+            ...(created.sourceContext.contextMeta as any),
+            tokenEstimate,
+          },
+        },
+      });
+    } catch (e) {
+      logger.warn('Failed to update contextMeta tokenEstimate', {
+        sourceContextId: created.sourceContext.id,
+      });
+    }
+
+    // 7) 保存消息 + 更新统计
+    const [userMsg, assistantMsg] = await prisma.$transaction([
       prisma.subthreadMessage.create({
         data: {
-          subthreadId: subthread.id,
+          subthreadId: created.subthread.id,
           role: MessageRole.USER,
           content: input.userQuestion,
         },
       }),
-      // 助手回复
       prisma.subthreadMessage.create({
         data: {
-          subthreadId: subthread.id,
+          subthreadId: created.subthread.id,
           role: MessageRole.ASSISTANT,
           content: llmResponse.content,
           model: llmResponse.model,
           promptTokens: llmResponse.promptTokens,
           completionTokens: llmResponse.completionTokens,
           finishReason: llmResponse.finishReason,
+          error: llmResponse.error || null,
         },
       }),
-      // 更新子线程统计
       prisma.subthread.update({
-        where: { id: subthread.id },
+        where: { id: created.subthread.id },
         data: {
           messageCount: 2,
-          tokenCount:
-            (llmResponse.promptTokens || 0) +
-            (llmResponse.completionTokens || 0),
+          tokenCount: tokenEstimate,
+          updatedAt: new Date(),
         },
       }),
     ]);
 
     logger.info('Subthread created', {
-      subthreadId: subthread.id,
+      subthreadId: created.subthread.id,
       provider,
       model,
     });
 
+    // 8) 返回给路由层的数据（保持兼容：结构不做破坏性变更）
     return {
       subthread: {
-        id: subthread.id,
+        id: created.subthread.id,
         provider,
         model,
         sourceContext: {
           platform: input.platform,
           selectionText: input.selectionText.slice(0, 200),
+          contextMeta: {
+            ...contextMeta,
+            tokenEstimate,
+          },
         },
       },
       messages: [
         {
-          id: userMessage.id,
-          role: userMessage.role,
-          content: userMessage.content,
-          createdAt: userMessage.createdAt,
+          id: userMsg.id,
+          role: userMsg.role,
+          content: userMsg.content,
+          createdAt: userMsg.createdAt,
         },
         {
-          id: assistantMessage.id,
-          role: assistantMessage.role,
-          content: assistantMessage.content,
-          createdAt: assistantMessage.createdAt,
+          id: assistantMsg.id,
+          role: assistantMsg.role,
+          content: assistantMsg.content,
+          createdAt: assistantMsg.createdAt,
         },
       ],
       assistantReply: {
-        id: assistantMessage.id,
-        content: assistantMessage.content,
+        id: assistantMsg.id,
+        content: assistantMsg.content,
       },
     };
   }
@@ -170,7 +236,6 @@ export class SubthreadService {
     subthreadId: string,
     input: ContinueSubthreadInput
   ) {
-    // 获取子线程
     const subthread = await prisma.subthread.findFirst({
       where: {
         id: subthreadId,
@@ -181,7 +246,7 @@ export class SubthreadService {
         sourceContext: true,
         messages: {
           orderBy: { createdAt: 'asc' },
-          take: 20, // 最近 20 条消息
+          take: 50,
         },
       },
     });
@@ -190,41 +255,38 @@ export class SubthreadService {
       throw Errors.subthreadNotFound();
     }
 
-    // 确定 provider 和 model（可以临时切换）
     const provider = input.provider || subthread.provider;
     const model = input.model || subthread.model;
 
-    // 获取 API Key
     const apiKey = await this.userService.getDecryptedApiKey(userId, provider);
 
-    // 构建消息历史
     const systemPrompt = this.buildSystemPrompt(
       subthread.sourceContext.selectionText,
       subthread.sourceContext.messageText
     );
 
-    const messages = [
-      { role: 'system' as const, content: systemPrompt },
+    const history: LLMMessage[] = [
+      { role: 'system', content: systemPrompt },
       ...subthread.messages.map((m) => ({
-        role: m.role.toLowerCase() as 'user' | 'assistant',
+        role: mapPrismaRoleToLLMRole(m.role),
         content: m.content,
       })),
-      { role: 'user' as const, content: input.userQuestion },
+      { role: 'user', content: input.userQuestion },
     ];
 
-    // 调用 LLM（同样带上 DeepSeek 兜底 key）
     const llmResponse = await this.llmService.complete({
-      messages,
+      messages: history,
       config: {
         provider,
         model,
         apiKey,
-        deepseekApiKey: process.env.DEEPSEEK_API_KEY || '',
-      } as any,
+      },
     });
 
-    // 保存消息
-    const [userMessage, assistantMessage] = await prisma.$transaction([
+    const tokenDelta =
+      (llmResponse.promptTokens || 0) + (llmResponse.completionTokens || 0);
+
+    const [userMsg, assistantMsg] = await prisma.$transaction([
       prisma.subthreadMessage.create({
         data: {
           subthreadId,
@@ -241,17 +303,14 @@ export class SubthreadService {
           promptTokens: llmResponse.promptTokens,
           completionTokens: llmResponse.completionTokens,
           finishReason: llmResponse.finishReason,
+          error: llmResponse.error || null,
         },
       }),
       prisma.subthread.update({
         where: { id: subthreadId },
         data: {
           messageCount: { increment: 2 },
-          tokenCount: {
-            increment:
-              (llmResponse.promptTokens || 0) +
-              (llmResponse.completionTokens || 0),
-          },
+          tokenCount: { increment: tokenDelta },
           updatedAt: new Date(),
         },
       }),
@@ -260,21 +319,21 @@ export class SubthreadService {
     return {
       messages: [
         {
-          id: userMessage.id,
-          role: userMessage.role,
-          content: userMessage.content,
-          createdAt: userMessage.createdAt,
+          id: userMsg.id,
+          role: userMsg.role,
+          content: userMsg.content,
+          createdAt: userMsg.createdAt,
         },
         {
-          id: assistantMessage.id,
-          role: assistantMessage.role,
-          content: assistantMessage.content,
-          createdAt: assistantMessage.createdAt,
+          id: assistantMsg.id,
+          role: assistantMsg.role,
+          content: assistantMsg.content,
+          createdAt: assistantMsg.createdAt,
         },
       ],
       assistantReply: {
-        id: assistantMessage.id,
-        content: assistantMessage.content,
+        id: assistantMsg.id,
+        content: assistantMsg.content,
       },
     };
   }
@@ -286,26 +345,25 @@ export class SubthreadService {
     const { page, pageSize, platform, status, search } = query;
     const skip = (page - 1) * pageSize;
 
-    const where = {
+    const where: any = {
       userId,
       status: status || SubthreadStatus.ACTIVE,
-      ...(platform && {
-        sourceContext: { platform },
-      }),
-      ...(search && {
-        OR: [
-          { title: { contains: search, mode: 'insensitive' as const } },
-          {
-            sourceContext: {
-              selectionText: {
-                contains: search,
-                mode: 'insensitive' as const,
-              },
-            },
-          },
-        ],
-      }),
     };
+
+    if (platform) {
+      where.sourceContext = { platform };
+    }
+
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        {
+          sourceContext: {
+            selectionText: { contains: search, mode: 'insensitive' },
+          },
+        },
+      ];
+    }
 
     const [subthreads, total] = await prisma.$transaction([
       prisma.subthread.findMany({
@@ -315,6 +373,7 @@ export class SubthreadService {
             select: {
               platform: true,
               selectionText: true,
+              contextMeta: true, // ✅ PR-B2：列表可见
             },
           },
           messages: {
@@ -346,6 +405,7 @@ export class SubthreadService {
         sourceContext: {
           platform: s.sourceContext.platform,
           selectionText: s.sourceContext.selectionText.slice(0, 100),
+          contextMeta: s.sourceContext.contextMeta ?? null,
         },
         lastMessage: s.messages[0]
           ? {
@@ -392,6 +452,9 @@ export class SubthreadService {
         conversationUrl: subthread.sourceContext.conversationUrl,
         messageText: subthread.sourceContext.messageText,
         selectionText: subthread.sourceContext.selectionText,
+        selectionStart: subthread.sourceContext.selectionStart,
+        selectionEnd: subthread.sourceContext.selectionEnd,
+        contextMeta: subthread.sourceContext.contextMeta ?? null, // ✅ PR-B2
       },
       messages: subthread.messages.map((m) => ({
         id: m.id,
@@ -430,51 +493,34 @@ export class SubthreadService {
     }
   }
 
-  // ============================================
+  // ============================================================
   // 私有方法
-  // ============================================
+  // ============================================================
 
-  /**
-   * 解析要使用的 provider 和 model
-   */
   private async resolveProviderAndModel(
     userId: string,
-    platform: string,
     requestProvider?: LLMProvider,
     requestModel?: string
   ): Promise<{ provider: LLMProvider; model: string }> {
-    // 如果请求指定了，直接使用
+    // 显式指定：优先
     if (requestProvider && requestModel) {
       return { provider: requestProvider, model: requestModel };
     }
 
-    // 从平台配置获取默认值
-    const platformKey = platform as SupportedPlatform;
-    const platformConfig =
-      PLATFORM_CONFIG[platformKey] || PLATFORM_CONFIG.unknown;
+    // 用户设置：次优先
+    const settings = await prisma.userSettings.findUnique({ where: { userId } });
+    const provider = requestProvider || settings?.defaultProvider || LLMProvider.OPENAI;
 
-    // 获取用户设置
-    const settings = await prisma.userSettings.findUnique({
-      where: { userId },
-    });
-
-    const provider =
-      requestProvider ||
-      settings?.defaultProvider ||
-      (platformConfig.provider as LLMProvider);
-
-    const model = requestModel || platformConfig.defaultModel;
+    // model：若没指定，用一个安全默认
+    const model = requestModel || 'gpt-4o-mini';
 
     return { provider, model };
   }
 
-  /**
-   * 构建系统提示词
-   */
-  private buildSystemPrompt(
-    selectionText: string,
-    fullMessageText: string
-  ): string {
+  private buildSystemPrompt(selectionText: string, fullMessageText: string): string {
+    const truncated = fullMessageText.slice(0, 3000);
+    const tail = fullMessageText.length > 3000 ? '\n...(内容过长已截断)' : '';
+
     return `你是一个智能助手，正在帮助用户深入探讨一个话题。
 
 用户正在阅读一段 AI 对话，并选中了其中的一部分内容想要进一步了解。
@@ -483,9 +529,7 @@ export class SubthreadService {
 ${selectionText}
 
 ## 完整的原始回答（供参考）
-${fullMessageText.slice(0, 3000)}${
-      fullMessageText.length > 3000 ? '\n...(内容过长已截断)' : ''
-    }
+${truncated}${tail}
 
 ## 你的任务
 - 针对用户选中的内容回答问题

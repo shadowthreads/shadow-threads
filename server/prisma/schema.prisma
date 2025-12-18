@@ -18,18 +18,18 @@ model User {
   id        String   @id @default(uuid())
   email     String?  @unique
   name      String?
-  
+
   // 本地用户可以没有邮箱，用设备标识
   deviceId  String?  @unique
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   // 关联
   apiKeys    UserApiKey[]
   subthreads Subthread[]
   settings   UserSettings?
-  
+
   @@index([email])
   @@index([deviceId])
 }
@@ -38,18 +38,18 @@ model UserSettings {
   id     String @id @default(uuid())
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   // 默认 LLM 提供商
   defaultProvider LLMProvider @default(OPENAI)
-  
+
   // UI 偏好
   theme           String @default("auto") // auto, light, dark
   language        String @default("zh-CN")
-  
+
   // 功能开关
   autoSummarize   Boolean @default(true)
   saveHistory     Boolean @default(true)
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -59,21 +59,21 @@ model UserApiKey {
   id       String      @id @default(uuid())
   userId   String
   user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   provider LLMProvider
-  
+
   // API Key（加密存储）
   encryptedKey String
-  
+
   // 元数据
   label     String?  // 用户自定义标签
   isDefault Boolean  @default(false)
   isValid   Boolean  @default(true)
   lastUsed  DateTime?
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   @@unique([userId, provider, label])
   @@index([userId, provider])
 }
@@ -99,29 +99,32 @@ enum LLMProvider {
 // 主对话上下文（来源）
 model SourceContext {
   id        String   @id @default(uuid())
-  
+
   // 来源平台
   platform  String   // chatgpt, claude, gemini, etc.
-  
+
   // 原始对话信息
   conversationId  String   // 平台的对话 ID
   conversationUrl String?  // 对话 URL
-  
+
   // 原始消息信息
   messageId       String   // 平台的消息 ID
   messageRole     String   // user, assistant
   messageText     String   @db.Text // 完整消息文本
-  
+
   // 用户选中的片段
   selectionText   String   @db.Text
   selectionStart  Int?     // 选中起始位置
   selectionEnd    Int?     // 选中结束位置
-  
+
+  // ✅ PR-B2：Context L1 元信息（窗口化上下文的 meta）
+  contextMeta     Json?
+
   createdAt DateTime @default(now())
-  
+
   // 关联
   subthread Subthread?
-  
+
   @@index([platform, conversationId])
   @@index([platform, messageId])
 }
@@ -129,38 +132,38 @@ model SourceContext {
 // 影子子线程
 model Subthread {
   id     String @id @default(uuid())
-  
+
   // 所属用户
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   // 来源上下文
   sourceContextId String        @unique
   sourceContext   SourceContext @relation(fields: [sourceContextId], references: [id], onDelete: Cascade)
-  
+
   // 使用的 LLM
   provider LLMProvider
   model    String      // 具体模型，如 gpt-4, claude-3-opus
-  
+
   // 子线程标题（可自动生成）
   title String?
-  
+
   // 状态
   status SubthreadStatus @default(ACTIVE)
-  
+
   // 上下文摘要（用于长对话压缩）
   summary String? @db.Text
-  
+
   // 统计
   messageCount Int @default(0)
   tokenCount   Int @default(0)
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   // 关联
   messages SubthreadMessage[]
-  
+
   @@index([userId, createdAt])
   @@index([userId, status])
 }
@@ -174,27 +177,27 @@ enum SubthreadStatus {
 // 子线程消息
 model SubthreadMessage {
   id          String @id @default(uuid())
-  
+
   subthreadId String
   subthread   Subthread @relation(fields: [subthreadId], references: [id], onDelete: Cascade)
-  
+
   // 消息内容
   role    MessageRole
   content String      @db.Text
-  
+
   // Token 统计
   promptTokens     Int?
   completionTokens Int?
-  
+
   // 元数据
   model      String?  // 使用的模型
   finishReason String? // stop, length, etc.
-  
+
   // 错误信息（如果有）
   error String?
-  
+
   createdAt DateTime @default(now())
-  
+
   @@index([subthreadId, createdAt])
 }
 
@@ -211,6 +214,6 @@ enum MessageRole {
 model SystemConfig {
   key   String @id
   value String @db.Text
-  
+
   updatedAt DateTime @updatedAt
 }
