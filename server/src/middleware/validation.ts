@@ -67,7 +67,15 @@ export const createSubthreadSchema = z.object({
   
   // 用户问题
   userQuestion: z.string().min(1).max(10000),
-  
+  //上下文窗口
+  contextMessages: z.array(
+    z.object({
+      id: z.string(),
+      role: z.enum(['user', 'assistant']),
+      content: z.string().min(1)
+    })
+  ).optional(),
+
   // LLM 配置
   provider: z.nativeEnum(LLMProvider).optional(),
   model: z.string().optional()

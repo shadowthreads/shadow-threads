@@ -17,6 +17,18 @@ import {
 } from './ui/sidebar';
 import { initSelectionEngine } from './ui/selection';
 
+type UAContextMsg = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+function isUserOrAssistant(
+  m: { role: 'user' | 'assistant' | 'system' }
+): m is { role: 'user' | 'assistant' } {
+  return m.role === 'user' || m.role === 'assistant';
+}
+
 // ============================================
 // 全局状态
 // ============================================
@@ -313,18 +325,47 @@ function submitQuestion(selectionText: string, userQuestion: string, requestId?:
     }
   }, HARD_TIMEOUT_MS);
 
-  const request: CreateSubthreadRequest = {
-    platform: currentPlatform,
-    conversationId: adapter?.getConversationId() || window.location.pathname,
-    conversationUrl: window.location.href,
-    messageId: message.id,
-    messageRole: message.role,
-    messageText: message.content,
-    selectionText,
-    userQuestion,
-    provider: config.provider,
-    model: config.defaultModel
-  };
+  // ===== L1 上下文窗口（最小实现）=====
+let contextMessages: { id: string; role: 'user' | 'assistant'; content: string }[] | undefined;
+
+try {
+  const allMessages = adapter?.getMessages() || [];
+  const anchorIndex = allMessages.findIndex(m => m.id === message.id);
+
+  if (anchorIndex >= 0) {
+    const ABOVE = 8;
+    const BELOW = 0;
+
+    const start = Math.max(0, anchorIndex - ABOVE);
+    const end = Math.min(allMessages.length, anchorIndex + 1 + BELOW);
+
+    contextMessages = allMessages
+      .slice(start, end)
+      .filter((m): m is (typeof m & { role: 'user' | 'assistant' }) => m.role === 'user' || m.role === 'assistant')
+      .map((m): UAContextMsg => ({
+        id: m.id,
+        role: m.role,      // ✅ 现在这里不会再是 system
+        content: m.content
+      }));
+  }
+} catch (e) {
+  console.warn('[ShadowThreads] Failed to build context window:', e);
+}
+
+// ===== 原有请求 + 新字段 =====
+const request: CreateSubthreadRequest & { contextMessages?: any[] } = {
+  platform: currentPlatform,
+  conversationId: adapter?.getConversationId() || window.location.pathname,
+  conversationUrl: window.location.href,
+  messageId: message.id,
+  messageRole: message.role,
+  messageText: message.content,
+  selectionText,
+  userQuestion,
+  provider: config.provider,
+  model: config.defaultModel,
+  ...(contextMessages ? { contextMessages } : {})
+};
 
   console.log('[ShadowThreads] Sending request:', { requestId: rid, request });
 
