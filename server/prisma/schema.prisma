@@ -15,12 +15,12 @@ datasource db {
 // ============================================
 
 model User {
-  id        String   @id @default(uuid())
-  email     String?  @unique
-  name      String?
+  id    String  @id @default(uuid())
+  email String? @unique
+  name  String?
 
   // 本地用户可以没有邮箱，用设备标识
-  deviceId  String?  @unique
+  deviceId String? @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -29,6 +29,9 @@ model User {
   apiKeys    UserApiKey[]
   subthreads Subthread[]
   settings   UserSettings?
+
+  // ✅ StateSnapshot 反向关系（修复 Prisma P1012）
+  stateSnapshots StateSnapshot[]
 
   @@index([email])
   @@index([deviceId])
@@ -43,12 +46,12 @@ model UserSettings {
   defaultProvider LLMProvider @default(OPENAI)
 
   // UI 偏好
-  theme           String @default("auto") // auto, light, dark
-  language        String @default("zh-CN")
+  theme    String @default("auto") // auto, light, dark
+  language String @default("zh-CN")
 
   // 功能开关
-  autoSummarize   Boolean @default(true)
-  saveHistory     Boolean @default(true)
+  autoSummarize Boolean @default(true)
+  saveHistory   Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -56,9 +59,9 @@ model UserSettings {
 
 // 用户的 API Key 存储（加密存储）
 model UserApiKey {
-  id       String      @id @default(uuid())
-  userId   String
-  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   provider LLMProvider
 
@@ -66,9 +69,9 @@ model UserApiKey {
   encryptedKey String
 
   // 元数据
-  label     String?  // 用户自定义标签
-  isDefault Boolean  @default(false)
-  isValid   Boolean  @default(true)
+  label     String? // 用户自定义标签
+  isDefault Boolean   @default(false)
+  isValid   Boolean   @default(true)
   lastUsed  DateTime?
 
   createdAt DateTime @default(now())
@@ -83,13 +86,13 @@ model UserApiKey {
 // ============================================
 
 enum LLMProvider {
-  OPENAI      // ChatGPT
-  ANTHROPIC   // Claude
-  GOOGLE      // Gemini
-  GROQ        // Groq
-  OLLAMA      // 本地 Ollama
-  DEEPSEEK    // Deepseek
-  CUSTOM      // 自定义 API
+  OPENAI // ChatGPT
+  ANTHROPIC // Claude
+  GOOGLE // Gemini
+  GROQ // Groq
+  OLLAMA // 本地 Ollama
+  DEEPSEEK // Deepseek
+  CUSTOM // 自定义 API
 }
 
 // ============================================
@@ -98,27 +101,27 @@ enum LLMProvider {
 
 // 主对话上下文（来源）
 model SourceContext {
-  id        String   @id @default(uuid())
+  id String @id @default(uuid())
 
   // 来源平台
-  platform  String   // chatgpt, claude, gemini, etc.
+  platform String // chatgpt, claude, gemini, etc.
 
   // 原始对话信息
-  conversationId  String   // 平台的对话 ID
-  conversationUrl String?  // 对话 URL
+  conversationId  String // 平台的对话 ID
+  conversationUrl String? // 对话 URL
 
   // 原始消息信息
-  messageId       String   // 平台的消息 ID
-  messageRole     String   // user, assistant
-  messageText     String   @db.Text // 完整消息文本
+  messageId   String // 平台的消息 ID
+  messageRole String // user, assistant
+  messageText String @db.Text // 完整消息文本
 
   // 用户选中的片段
-  selectionText   String   @db.Text
-  selectionStart  Int?     // 选中起始位置
-  selectionEnd    Int?     // 选中结束位置
+  selectionText  String @db.Text
+  selectionStart Int? // 选中起始位置
+  selectionEnd   Int? // 选中结束位置
 
   // ✅ PR-B2：Context L1 元信息（窗口化上下文的 meta）
-  contextMeta     Json?
+  contextMeta Json?
 
   createdAt DateTime @default(now())
 
@@ -131,7 +134,7 @@ model SourceContext {
 
 // 影子子线程
 model Subthread {
-  id     String @id @default(uuid())
+  id String @id @default(uuid())
 
   // 所属用户
   userId String
@@ -143,7 +146,7 @@ model Subthread {
 
   // 使用的 LLM
   provider LLMProvider
-  model    String      // 具体模型，如 gpt-4, claude-3-opus
+  model    String // 具体模型，如 gpt-4, claude-3-opus
 
   // 子线程标题（可自动生成）
   title String?
@@ -164,6 +167,9 @@ model Subthread {
   // 关联
   messages SubthreadMessage[]
 
+  // ✅ StateSnapshot 反向关系（修复 Prisma P1012）
+  stateSnapshots StateSnapshot[]
+
   @@index([userId, createdAt])
   @@index([userId, status])
 }
@@ -176,7 +182,7 @@ enum SubthreadStatus {
 
 // 子线程消息
 model SubthreadMessage {
-  id          String @id @default(uuid())
+  id String @id @default(uuid())
 
   subthreadId String
   subthread   Subthread @relation(fields: [subthreadId], references: [id], onDelete: Cascade)
@@ -190,7 +196,7 @@ model SubthreadMessage {
   completionTokens Int?
 
   // 元数据
-  model      String?  // 使用的模型
+  model        String? // 使用的模型
   finishReason String? // stop, length, etc.
 
   // 错误信息（如果有）
@@ -205,6 +211,34 @@ enum MessageRole {
   SYSTEM
   USER
   ASSISTANT
+}
+
+// ============================================
+// StateSnapshot（思考状态库 v1）
+// ============================================
+
+model StateSnapshot {
+  id String @id @default(uuid())
+
+  // 归属用户
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 来源子线程（v1 可选）
+  subthreadId String?
+  subthread   Subthread? @relation(fields: [subthreadId], references: [id], onDelete: SetNull)
+
+  // 核心：StateSnapshot v1 JSON
+  snapshot Json
+
+  // 版本控制
+  version String // 固定写 "v1"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([subthreadId])
 }
 
 // ============================================

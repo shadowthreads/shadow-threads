@@ -2,6 +2,7 @@
  * 子线程业务服务
  * PR-B2: Context L1 meta 落库（SourceContext.contextMeta）
  * PR-B3: 接入前端传来的 contextMessages 作为 LLM history 的一部分（不改变主流程）
+ * Phase 2.1: StateSnapshot v1 旁路落库（失败不影响主链路）
  */
 
 import { LLMProvider, MessageRole, SubthreadStatus } from '@prisma/client';
@@ -14,6 +15,7 @@ import {
 } from '../middleware';
 import { LLMService } from './llm.service';
 import { UserService } from './user.service';
+import { StateSnapshotService } from './state-snapshot.service';
 
 type ContextMetaL1 = {
   strategy: 'WINDOW_L1';
@@ -52,11 +54,20 @@ function mapPrismaRoleToLLMRole(role: MessageRole): 'system' | 'user' | 'assista
 export class SubthreadService {
   private llmService = new LLMService();
   private userService = new UserService();
+  private stateSnapshotService = new StateSnapshotService();
 
   /**
    * 创建新子线程
    */
   async createSubthread(userId: string, input: CreateSubthreadInput) {
+    // ✅ DEBUG：确认请求确实进入了这个 service
+    logger.info('[DEBUG] createSubthread entered', {
+      userId,
+      platform: input.platform,
+      conversationId: input.conversationId,
+      messageId: input.messageId,
+    });
+
     logger.info('Creating subthread', { userId, platform: input.platform });
 
     // 1) 解析 provider/model（PR-B2 不改变决策逻辑：只做最小可用兜底）
@@ -73,7 +84,7 @@ export class SubthreadService {
     const systemPrompt = this.buildSystemPrompt(input.selectionText, input.messageText);
 
     // 4) PR-B3：清洗 contextMessages（只允许 user/assistant）
-    //    ⚠️ 这里用 contextWindow，避免和你之前重复声明 contextMessages 冲突
+    //    ⚠️ 用 contextWindow，避免和其他地方重复声明 contextMessages
     const rawContext = (input as any).contextMessages;
     const contextWindow: Array<{ id?: string; role: 'user' | 'assistant'; content: string }> =
       Array.isArray(rawContext)
@@ -92,7 +103,7 @@ export class SubthreadService {
             }))
         : [];
 
-    // 5) PR-B2：构造 contextMeta（先只记录元信息）
+    // 5) PR-B2：构造 contextMeta
     const ABOVE_TARGET = 8;
     const BELOW_TARGET = 0;
 
@@ -101,7 +112,7 @@ export class SubthreadService {
       aboveTarget: ABOVE_TARGET,
       belowTarget: BELOW_TARGET,
 
-      // 约定：contextWindow 是“以 anchor 为末尾”的窗口（你前端 slice 是到 anchorIndex+1）
+      // 约定：contextWindow 是“以 anchor 为末尾”的窗口（前端 slice 到 anchorIndex+1）
       // 所以 aboveCount = windowLen - 1
       aboveCount: contextWindow.length > 0 ? Math.max(0, contextWindow.length - 1) : 0,
       belowCount: 0,
@@ -151,13 +162,19 @@ export class SubthreadService {
       return { sourceContext, subthread };
     });
 
+    // ✅ DEBUG：确认 subthread 确实创建成功
+    logger.info('[DEBUG] subthread created in DB', {
+      subthreadId: created.subthread.id,
+      sourceContextId: created.sourceContext.id,
+    });
+
     // 7) 调用 LLM（llm.service.ts 内部可做 DeepSeek 兜底）
     const history: LLMMessage[] = [
       { role: 'system', content: systemPrompt },
 
       // PR-B3：把 contextWindow 作为历史（只包含 user/assistant）
       ...contextWindow.map((m) => ({
-        role: m.role as 'user' | 'assistant',
+        role: m.role,
         content: m.content,
       })),
 
@@ -188,7 +205,7 @@ export class SubthreadService {
           },
         },
       });
-    } catch (e) {
+    } catch {
       logger.warn('Failed to update contextMeta tokenEstimate', {
         sourceContextId: created.sourceContext.id,
       });
@@ -230,6 +247,47 @@ export class SubthreadService {
       provider,
       model,
     });
+
+    // ============================================================
+    // Phase 2.1：StateSnapshot v1 旁路落库（失败不影响主链路）
+    // ============================================================
+    try {
+      logger.info('[DEBUG] creating StateSnapshot', {
+        subthreadId: created.subthread.id,
+      });
+
+      await this.stateSnapshotService.createFromSubthread({
+        userId,
+        subthreadId: created.subthread.id,
+        snapshot: {
+          anchorIntent: {
+            // v1 最小可用：先用当前问题作为 intent 描述
+            description: input.userQuestion,
+          },
+          effectiveContext: {
+            // v1 最小可用：声明策略，后续 Phase 2.2/3 再丰富 summary/hybrid
+            strategy: 'WINDOW_L1',
+          },
+          thoughtTrajectory: {
+            // v1 先空：后续会逐步由系统/用户提炼
+            conclusions: [],
+          },
+          continuationContract: {
+            // v1 先空：后续再填“已知前提/继续规则”
+            assumptions: [],
+          },
+        },
+      });
+
+      logger.info('[DEBUG] StateSnapshot created', {
+        subthreadId: created.subthread.id,
+      });
+    } catch (e: any) {
+      logger.warn('StateSnapshot creation failed (ignored)', {
+        subthreadId: created.subthread.id,
+        error: e?.message || String(e),
+      });
+    }
 
     // 10) 返回（结构保持兼容）
     return {
@@ -541,14 +599,18 @@ export class SubthreadService {
     requestProvider?: LLMProvider,
     requestModel?: string
   ): Promise<{ provider: LLMProvider; model: string }> {
+    // 显式指定：优先
     if (requestProvider && requestModel) {
       return { provider: requestProvider, model: requestModel };
     }
 
+    // 用户设置：次优先
     const settings = await prisma.userSettings.findUnique({ where: { userId } });
     const provider = requestProvider || settings?.defaultProvider || LLMProvider.OPENAI;
 
+    // model：若没指定，用一个安全默认
     const model = requestModel || 'gpt-4o-mini';
+
     return { provider, model };
   }
 
