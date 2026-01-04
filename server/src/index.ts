@@ -16,6 +16,8 @@ import {
 } from './middleware';
 import apiRouter from './api';
 
+console.log("[BOOT] DATABASE_URL =", process.env.DATABASE_URL);
+
 async function bootstrap() {
   const app = express();
   

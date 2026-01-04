@@ -80,11 +80,10 @@ export class SubthreadService {
     // 2) 获取用户 API Key
     const apiKey = await this.userService.getDecryptedApiKey(userId, provider);
 
-    // 3) 先定义 systemPrompt（后面 history 要用）
+    // 3) systemPrompt
     const systemPrompt = this.buildSystemPrompt(input.selectionText, input.messageText);
 
     // 4) PR-B3：清洗 contextMessages（只允许 user/assistant）
-    //    ⚠️ 用 contextWindow，避免和其他地方重复声明 contextMessages
     const rawContext = (input as any).contextMessages;
     const contextWindow: Array<{ id?: string; role: 'user' | 'assistant'; content: string }> =
       Array.isArray(rawContext)
@@ -111,15 +110,11 @@ export class SubthreadService {
       strategy: 'WINDOW_L1',
       aboveTarget: ABOVE_TARGET,
       belowTarget: BELOW_TARGET,
-
       // 约定：contextWindow 是“以 anchor 为末尾”的窗口（前端 slice 到 anchorIndex+1）
-      // 所以 aboveCount = windowLen - 1
       aboveCount: contextWindow.length > 0 ? Math.max(0, contextWindow.length - 1) : 0,
       belowCount: 0,
-
       clipped: contextWindow.length === 0,
       clipReason: contextWindow.length === 0 ? 'UNAVAILABLE' : undefined,
-
       anchor: {
         conversationId: input.conversationId,
         messageId: input.messageId,
@@ -140,7 +135,7 @@ export class SubthreadService {
           selectionText: input.selectionText,
           selectionStart: input.selectionStart,
           selectionEnd: input.selectionEnd,
-          contextMeta, // ✅ PR-B2
+          contextMeta,
         },
       });
 
@@ -162,34 +157,23 @@ export class SubthreadService {
       return { sourceContext, subthread };
     });
 
-    // ✅ DEBUG：确认 subthread 确实创建成功
     logger.info('[DEBUG] subthread created in DB', {
       subthreadId: created.subthread.id,
       sourceContextId: created.sourceContext.id,
     });
 
-    // 7) 调用 LLM（llm.service.ts 内部可做 DeepSeek 兜底）
+    // 7) 调用 LLM
     const history: LLMMessage[] = [
       { role: 'system', content: systemPrompt },
-
-      // PR-B3：把 contextWindow 作为历史（只包含 user/assistant）
-      ...contextWindow.map((m) => ({
-        role: m.role,
-        content: m.content,
-      })),
-
-      // 最后追加当前问题
+      ...contextWindow.map((m) => ({ role: m.role, content: m.content })),
       { role: 'user', content: input.userQuestion },
     ];
 
     const llmResponse = await this.llmService.complete({
       messages: history,
-      config: {
-        provider,
-        model,
-        apiKey,
-      },
-    });
+      config: { provider, model, apiKey },
+      route: 'subthread_create',
+    } as any);
 
     const tokenEstimate =
       (llmResponse.promptTokens || 0) + (llmResponse.completionTokens || 0);
@@ -229,7 +213,8 @@ export class SubthreadService {
           promptTokens: llmResponse.promptTokens,
           completionTokens: llmResponse.completionTokens,
           finishReason: llmResponse.finishReason,
-          error: llmResponse.error || null,
+          // ✅ 先统一类型：types 里没定义 error，就先写 null，保证 build 通过
+          error: null,
         },
       }),
       prisma.subthread.update({
@@ -261,19 +246,15 @@ export class SubthreadService {
         subthreadId: created.subthread.id,
         snapshot: {
           anchorIntent: {
-            // v1 最小可用：先用当前问题作为 intent 描述
             description: input.userQuestion,
           },
           effectiveContext: {
-            // v1 最小可用：声明策略，后续 Phase 2.2/3 再丰富 summary/hybrid
             strategy: 'WINDOW_L1',
           },
           thoughtTrajectory: {
-            // v1 先空：后续会逐步由系统/用户提炼
             conclusions: [],
           },
           continuationContract: {
-            // v1 先空：后续再填“已知前提/继续规则”
             assumptions: [],
           },
         },
@@ -328,11 +309,7 @@ export class SubthreadService {
   /**
    * 继续子线程对话
    */
-  async continueSubthread(
-    userId: string,
-    subthreadId: string,
-    input: ContinueSubthreadInput
-  ) {
+  async continueSubthread(userId: string, subthreadId: string, input: ContinueSubthreadInput) {
     const subthread = await prisma.subthread.findFirst({
       where: {
         id: subthreadId,
@@ -373,12 +350,9 @@ export class SubthreadService {
 
     const llmResponse = await this.llmService.complete({
       messages: history,
-      config: {
-        provider,
-        model,
-        apiKey,
-      },
-    });
+      config: { provider, model, apiKey },
+      route: 'subthread_continue',
+    } as any);
 
     const tokenDelta =
       (llmResponse.promptTokens || 0) + (llmResponse.completionTokens || 0);
@@ -400,7 +374,8 @@ export class SubthreadService {
           promptTokens: llmResponse.promptTokens,
           completionTokens: llmResponse.completionTokens,
           finishReason: llmResponse.finishReason,
-          error: llmResponse.error || null,
+          // ✅ 同上：先写 null 保证类型/编译一致
+          error: null,
         },
       }),
       prisma.subthread.update({

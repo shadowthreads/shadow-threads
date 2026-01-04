@@ -1,7 +1,7 @@
 /**
  * API 路由入口
  */
-
+import stateSnapshotsRouter from './stateSnapshots';
 import { Router } from 'express';
 import systemRouter from './system';
 import subthreadsRouter from './subthreads';
@@ -15,5 +15,6 @@ router.use('/', systemRouter);
 // 业务路由
 router.use('/subthreads', subthreadsRouter);
 router.use('/users', usersRouter);
+router.use('/state-snapshots', stateSnapshotsRouter);
 
 export default router;
