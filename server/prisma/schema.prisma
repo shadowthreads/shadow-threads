@@ -231,14 +231,33 @@ model StateSnapshot {
   // 核心：StateSnapshot v1 JSON
   snapshot Json
 
-  // 版本控制
-  version String // 固定写 "v1"
+  // 版本控制（仍然固定 v1，语义不变）
+  version String
+
+  // ========= 新增：状态演化链（不会影响现有逻辑） =========
+
+  /// 整条状态链的根（第一版 snapshot）
+  rootId String?
+
+  /// 上一个 snapshot（用于回溯）
+  parentId String?
+
+  /// 第几次演化（0 = 初始）
+  rev Int @default(0)
+
+  /// 自引用关系（可选但强烈推荐）
+  parent   StateSnapshot?  @relation("StateSnapshotLineage", fields: [parentId], references: [id])
+  children StateSnapshot[] @relation("StateSnapshotLineage")
+
+  // =========================================================
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId, createdAt])
   @@index([subthreadId])
+  @@index([rootId])
+  @@index([parentId])
 }
 
 // ============================================
