@@ -10,7 +10,10 @@ import {
   BackendHealthStatus,
   DebugStatus,
   LastRequestSnapshot,
-  SubthreadListItem
+  SubthreadListItem,
+  PinSnapshotRequest,
+  PinSnapshotResponse,
+  PinSnapshotError
 } from './types';
 
 // ============================================
@@ -80,6 +83,32 @@ async function checkServer() {
 }
 
 // ============================================
+// ✅ MV3 Keep-Alive：接收 content.ts 的长连接（不影响主链路）
+// ============================================
+
+chrome.runtime.onConnect.addListener((port) => {
+  try {
+    if (port.name !== 'st-keepalive') return;
+
+    port.onMessage.addListener((msg) => {
+      // content 端会定时 post {type:'PING'}
+      // 这里不用回任何东西，保持连接即可
+      if (msg?.type === 'PING') {
+        // no-op
+      }
+    });
+
+    port.onDisconnect.addListener(() => {
+      // no-op
+    });
+
+    console.log('[ShadowThreads BG] KeepAlive port connected');
+  } catch {
+    // ignore
+  }
+});
+
+// ============================================
 // 消息处理
 // ============================================
 
@@ -102,6 +131,13 @@ chrome.runtime.onMessage.addListener((
 
     case 'CONTINUE_SUBTHREAD': {
       handleContinueSubthread(message.data, tabId, requestId);
+      sendResponse({ received: true, requestId });
+      return false;
+    }
+
+    // ✅ 新增：用户手动 Pin 一个 snapshot 起点
+    case 'PIN_SNAPSHOT': {
+      handlePinSnapshot(message.data as PinSnapshotRequest, tabId, requestId);
       sendResponse({ received: true, requestId });
       return false;
     }
@@ -348,6 +384,99 @@ async function handleContinueSubthread(
       type: 'SUBTHREAD_ERROR',
       requestId,
       data: { error: msg }
+    });
+
+    finalizeLastRequest(false, msg, undefined, undefined);
+  }
+}
+
+// ============================================
+// ✅ 新增：Pin Snapshot（用户手动创建 snapshot 起点）
+// ============================================
+
+async function handlePinSnapshot(
+  data: PinSnapshotRequest,
+  tabId?: number,
+  requestId?: string
+) {
+  console.log('[ShadowThreads BG] Pin snapshot...', { requestId, tabId });
+
+  if (tabId == null) {
+    console.error('[ShadowThreads BG] Missing tabId for PIN_SNAPSHOT, cannot deliver response.', {
+      requestId,
+      subthreadId: (data as any)?.subthreadId
+    });
+    return;
+  }
+
+  const subthreadId = String(data?.subthreadId || '').trim();
+  if (!subthreadId) {
+    await sendToTab(tabId, {
+      type: 'PIN_SNAPSHOT_ERROR',
+      requestId,
+      data: { error: 'missing subthreadId' } satisfies PinSnapshotError
+    });
+    return;
+  }
+
+  // ✅ 记录 lastRequest（旁路观察，不影响功能）
+  lastRequest = {
+    requestId: requestId || `no-rid-${Date.now()}`,
+    kind: 'PIN_SNAPSHOT',
+    startedAt: Date.now(),
+    tabId
+  };
+
+  try {
+    const response = await fetch(`${serverUrl}/api/v1/subthreads/${subthreadId}/snapshots`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Device-ID': deviceId,
+        ...(requestId ? { 'X-Request-ID': requestId } : {})
+      }
+    });
+
+    let result: any = null;
+    try {
+      result = await response.json();
+    } catch {
+      const msg = `服务器返回非 JSON 响应（HTTP ${response.status}）`;
+      await sendToTab(tabId, {
+        type: 'PIN_SNAPSHOT_ERROR',
+        requestId,
+        data: { error: msg } satisfies PinSnapshotError
+      });
+      finalizeLastRequest(false, msg, response.status, undefined);
+      return;
+    }
+
+    if (result?.success) {
+      await sendToTab(tabId, {
+        type: 'PIN_SNAPSHOT_RESPONSE',
+        requestId,
+        data: (result.data || {}) as PinSnapshotResponse
+      });
+
+      finalizeLastRequest(true, undefined, response.status, undefined);
+    } else {
+      const errMsg = result?.error?.message || `请求失败（HTTP ${response.status}）`;
+      await sendToTab(tabId, {
+        type: 'PIN_SNAPSHOT_ERROR',
+        requestId,
+        data: { error: errMsg } satisfies PinSnapshotError
+      });
+
+      finalizeLastRequest(false, errMsg, response.status, undefined);
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Network error';
+    console.error('[ShadowThreads BG] PIN_SNAPSHOT failed:', error);
+
+    await sendToTab(tabId, {
+      type: 'PIN_SNAPSHOT_ERROR',
+      requestId,
+      data: { error: msg } satisfies PinSnapshotError
     });
 
     finalizeLastRequest(false, msg, undefined, undefined);

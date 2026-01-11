@@ -47,6 +47,7 @@ function createSidebarHTML(): string {
         </div>
         <div class="st-sidebar-actions">
           <button class="st-sidebar-btn" id="st-sidebar-history" title="历史记录">📋</button>
+          <button class="st-sidebar-btn" id="st-sidebar-pin" title="Create snapshot here">📌</button>
           <button class="st-sidebar-btn" id="st-sidebar-settings" title="设置">⚙️</button>
           <button class="st-sidebar-btn st-sidebar-close" id="st-sidebar-close" title="关闭">✕</button>
         </div>
@@ -109,12 +110,39 @@ export function initSidebar(): void {
   sidebarElement = document.getElementById('st-sidebar');
 
   bindSidebarEvents();
+
+  // 初始状态：未创建子对话时禁用 Pin
+  const pinBtn = document.getElementById('st-sidebar-pin') as HTMLButtonElement | null;
+  if (pinBtn) pinBtn.disabled = true;
+
   console.log('[ShadowThreads] Sidebar initialized');
 }
 
 function bindSidebarEvents(): void {
   document.getElementById('st-sidebar-close')?.addEventListener('click', closeSidebar);
   document.getElementById('st-send-btn')?.addEventListener('click', handleSend);
+
+  // ✅ Pin Snapshot：由 content.ts 负责真正发请求（这里仅发事件）
+  document.getElementById('st-sidebar-pin')?.addEventListener('click', () => {
+    try {
+      // Snapshot 必须绑定 subthreadId：薄 UI 约束
+      if (!state.currentSubthreadId) {
+        showError('请先发送一次问题创建子对话后，再创建 Snapshot');
+        return;
+      }
+
+      const requestId = genRequestId();
+
+      window.dispatchEvent(new CustomEvent('st-pin-snapshot', {
+        detail: {
+          subthreadId: state.currentSubthreadId,
+          requestId
+        }
+      }));
+    } catch {
+      // ignore
+    }
+  });
 
   // ✅ 设置按钮：打开 Options Page（纯增量，不影响稳定链路）
   document.getElementById('st-sidebar-settings')?.addEventListener('click', () => {
@@ -127,10 +155,14 @@ function bindSidebarEvents(): void {
 
   const textarea = document.getElementById('st-input-textarea') as HTMLTextAreaElement;
   textarea?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key !== 'Enter') return;
+
+    // Shift+Enter：换行（默认行为），不拦截
+    if (e.shiftKey) return;
+
+    // Enter：发送（Ctrl/Meta+Enter 也发送，兼容原行为）
+    e.preventDefault();
+    handleSend();
   });
 
   textarea?.addEventListener('input', () => {
@@ -328,6 +360,11 @@ export function handleSubthreadResponse(data: SubthreadResponse): void {
 
     if (subthreadId) state.currentSubthreadId = subthreadId;
 
+    // 有 subthreadId 才允许 Pin
+    const pinBtn = document.getElementById('st-sidebar-pin') as HTMLButtonElement | null;
+    if (pinBtn) pinBtn.disabled = !state.currentSubthreadId;
+
+
     if (Array.isArray(anyData?.messages)) {
       state.messages = anyData.messages;
       renderMessages();
@@ -392,6 +429,10 @@ export function resetSidebar(): void {
   state.error = null;
   hideLoading();
   hideError();
+
+  const pinBtn = document.getElementById('st-sidebar-pin') as HTMLButtonElement | null;
+  if (pinBtn) pinBtn.disabled = true;
+
   renderMessages();
   updateContextPreview('');
 }

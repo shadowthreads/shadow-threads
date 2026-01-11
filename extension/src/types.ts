@@ -81,6 +81,31 @@ export interface ContinueSubthreadRequest {
   model?: string;
 }
 
+// ✅ Pin Snapshot：请求（由 UI 发给 background）
+export interface PinSnapshotRequest {
+  subthreadId: string;
+}
+
+// ✅ Pin Snapshot：返回（background 发回 content）
+export interface PinSnapshotResponse {
+  pinnedStateSnapshotId: string;
+  rootId: string;
+  parentId: string | null;
+  rev: number;
+  subthreadId: string;
+  version: string;
+  baseStateSnapshotId?: string;
+  baseCreatedAt?: string;
+  baseFingerprint?: {
+    anchorDescPreview?: string;
+    strategy?: string;
+  };
+}
+
+export interface PinSnapshotError {
+  error: string;
+}
+
 export interface SubthreadMessage {
   id: string;
   role: 'USER' | 'ASSISTANT' | 'SYSTEM';
@@ -136,7 +161,7 @@ export interface DebugStatus {
 
 export interface LastRequestSnapshot {
   requestId: string;
-  kind: 'CREATE_SUBTHREAD' | 'CONTINUE_SUBTHREAD';
+  kind: 'CREATE_SUBTHREAD' | 'CONTINUE_SUBTHREAD' | 'PIN_SNAPSHOT';
   startedAt: number;
   finishedAt?: number;
   durationMs?: number;
@@ -184,7 +209,11 @@ export type MessageType =
   | 'CHECK_BACKEND_HEALTH'
   | 'OPEN_OPTIONS_PAGE'
   | 'FETCH_SUBTHREADS'
-  | 'FETCH_SUBTHREAD_DETAIL';
+  | 'FETCH_SUBTHREAD_DETAIL'
+  // ✅ Snapshot Pin（新）
+  | 'PIN_SNAPSHOT'
+  | 'PIN_SNAPSHOT_RESPONSE'
+  | 'PIN_SNAPSHOT_ERROR';
 
 export interface ExtensionMessage<T = unknown> {
   type: MessageType;

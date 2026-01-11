@@ -13,7 +13,8 @@ import {
   handleSubthreadError,
   resetSidebar,
   toggleSidebar,
-  setLoadingText
+  setLoadingText,
+  addMessage
 } from './ui/sidebar';
 import { initSelectionEngine } from './ui/selection';
 
@@ -76,7 +77,13 @@ let keepAlivePort: chrome.runtime.Port | null = null;
 let keepAliveTimer: number | null = null;
 let reconnectTimer: number | null = null;
 
+// ✅ page lifecycle gate：BFCache/pagehide 时禁止重连
+let keepAliveEnabled = true;
+
 function startKeepAlive() {
+  // BFCache/pagehide 时不允许启动
+  if (!keepAliveEnabled) return;
+
   stopKeepAlive();
 
   try {
@@ -85,7 +92,8 @@ function startKeepAlive() {
     keepAlivePort.onDisconnect.addListener(() => {
       // background 被重启/挂起都会导致 disconnect
       stopKeepAlive();
-      scheduleReconnect();
+      // ✅ BFCache/pagehide 时不要重连
+      if (keepAliveEnabled) scheduleReconnect();
     });
 
     // 每 20s ping 一次
@@ -107,7 +115,7 @@ function startKeepAlive() {
     console.log('[ShadowThreads] KeepAlive port connected');
   } catch (e) {
     stopKeepAlive();
-    scheduleReconnect();
+    if (keepAliveEnabled) scheduleReconnect();
   }
 }
 
@@ -154,6 +162,17 @@ function init() {
   // ✅ 启动 keep-alive（最重要的一行）
   startKeepAlive();
 
+  // ✅ BFCache/page lifecycle guards
+  window.addEventListener('pagehide', () => {
+    keepAliveEnabled = false;
+    stopKeepAlive();
+  });
+
+  window.addEventListener('pageshow', () => {
+    keepAliveEnabled = true;
+    startKeepAlive();
+  });
+
   if (currentPlatform === 'unknown') {
     console.warn('[ShadowThreads] Unknown platform, some features may not work');
   }
@@ -170,6 +189,7 @@ function init() {
   setupMutationObserver();
   setupMessageListener();
   setupSendListener();
+  setupPinSnapshotListener();
 
   isInitialized = true;
 }
@@ -196,6 +216,39 @@ function setupSendListener(): void {
     const { question, selectionText, requestId } = e.detail || {};
     submitQuestion(selectionText, question, requestId);
   }) as EventListener);
+}
+
+// ============================================
+// ✅ Pin Snapshot 监听（来自 sidebar 的 window event）
+// ============================================
+
+function setupPinSnapshotListener(): void {
+  window.addEventListener('st-pin-snapshot', ((e: CustomEvent) => {
+    const { subthreadId, requestId } = e.detail || {};
+    if (!subthreadId) return;
+    submitPinSnapshot(String(subthreadId), requestId);
+  }) as EventListener);
+}
+
+function submitPinSnapshot(subthreadId: string, requestId?: string) {
+  const rid = requestId || genRequestId();
+
+  // 这里不复用 pendingRequestId / loading：Pin 是轻量动作，不应该把“提问”链路卡住
+  chrome.runtime.sendMessage(
+    {
+      type: 'PIN_SNAPSHOT',
+      requestId: rid,
+      data: { subthreadId }
+    },
+    (response) => {
+      if (chrome.runtime.lastError) {
+        handleSubthreadError(chrome.runtime.lastError.message || 'PIN_SNAPSHOT 发送失败');
+        return;
+      }
+      // background 会异步再发 PIN_SNAPSHOT_RESULT / PIN_SNAPSHOT_ERROR
+      console.log('[ShadowThreads] BG ack (PIN_SNAPSHOT):', response);
+    }
+  );
 }
 
 // ============================================
@@ -423,6 +476,44 @@ function setupMessageListener() {
 
           handleSubthreadError(msg.data?.error || '请求失败');
           clearPending();
+          break;
+        }
+
+        // ✅ Pin Snapshot：成功
+        case 'PIN_SNAPSHOT_RESPONSE': {
+          const d = msg.data || {};
+          const pinnedId = d?.pinnedStateSnapshotId || d?.pinnedSnapshotId || d?.id;
+
+          addMessage({
+            id: `pin-${Date.now()}`,
+            role: 'SYSTEM',
+            content: pinnedId
+              ? `📌 Snapshot 已固定\n- id: ${pinnedId}\n- rev: ${d.rev}\n- rootId: ${d.rootId}\n- parentId: ${d.parentId ?? 'null'}`
+              : `📌 已固定 Snapshot（但返回体缺少 pinnedStateSnapshotId）`,
+            createdAt: new Date().toISOString()
+          });
+
+          // 广播 window event，供 sidebar 做更强 UI（可选）
+          try {
+            window.dispatchEvent(new CustomEvent('st-pin-snapshot-result', { detail: d }));
+          } catch {
+            // ignore
+          }
+
+          break;
+        }
+
+        // ✅ Pin Snapshot：失败
+        case 'PIN_SNAPSHOT_ERROR': {
+          const errMsg = msg.data?.error || 'Pin Snapshot 失败';
+          handleSubthreadError(errMsg);
+
+          try {
+            window.dispatchEvent(new CustomEvent('st-pin-snapshot-error', { detail: msg.data || { error: errMsg } }));
+          } catch {
+            // ignore
+          }
+
           break;
         }
 
