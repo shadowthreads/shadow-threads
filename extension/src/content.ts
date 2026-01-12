@@ -40,6 +40,7 @@ let currentMessage: ConversationMessage | null = null;
 
 // ✅ 稳定性：请求级绑定 + 软/硬超时（保持你昨晚最终版）
 let pendingRequestId: string | null = null;
+let cancelledRequestIds = new Set<string>();
 let softTimer: number | null = null;
 let hardTimer: number | null = null;
 let pendingStartedAt = 0;
@@ -77,8 +78,20 @@ let keepAlivePort: chrome.runtime.Port | null = null;
 let keepAliveTimer: number | null = null;
 let reconnectTimer: number | null = null;
 
-// ✅ page lifecycle gate：BFCache/pagehide 时禁止重连
+// ✅ page lifecycle gate：BFCache/pagehide 时禁止启动/重连
 let keepAliveEnabled = true;
+
+function setupBFCacheGuards() {
+  window.addEventListener('pagehide', () => {
+    keepAliveEnabled = false;
+    stopKeepAlive();
+  });
+
+  window.addEventListener('pageshow', () => {
+    keepAliveEnabled = true;
+    startKeepAlive();
+  });
+}
 
 function startKeepAlive() {
   // BFCache/pagehide 时不允许启动
@@ -92,7 +105,6 @@ function startKeepAlive() {
     keepAlivePort.onDisconnect.addListener(() => {
       // background 被重启/挂起都会导致 disconnect
       stopKeepAlive();
-      // ✅ BFCache/pagehide 时不要重连
       if (keepAliveEnabled) scheduleReconnect();
     });
 
@@ -113,7 +125,7 @@ function startKeepAlive() {
     }
 
     console.log('[ShadowThreads] KeepAlive port connected');
-  } catch (e) {
+  } catch {
     stopKeepAlive();
     if (keepAliveEnabled) scheduleReconnect();
   }
@@ -137,10 +149,12 @@ function stopKeepAlive() {
 }
 
 function scheduleReconnect() {
+  if (!keepAliveEnabled) return;
   if (reconnectTimer) return;
+
   reconnectTimer = window.setTimeout(() => {
     reconnectTimer = null;
-    startKeepAlive();
+    if (keepAliveEnabled) startKeepAlive();
   }, 1500);
 }
 
@@ -159,19 +173,11 @@ function init() {
   console.log('[ShadowThreads] URL:', window.location.href);
   console.log('='.repeat(50));
 
+  // ✅ BFCache/page lifecycle guards（必须先挂监听，再启动 keepAlive）
+  setupBFCacheGuards();
+
   // ✅ 启动 keep-alive（最重要的一行）
   startKeepAlive();
-
-  // ✅ BFCache/page lifecycle guards
-  window.addEventListener('pagehide', () => {
-    keepAliveEnabled = false;
-    stopKeepAlive();
-  });
-
-  window.addEventListener('pageshow', () => {
-    keepAliveEnabled = true;
-    startKeepAlive();
-  });
 
   if (currentPlatform === 'unknown') {
     console.warn('[ShadowThreads] Unknown platform, some features may not work');
@@ -190,6 +196,8 @@ function init() {
   setupMessageListener();
   setupSendListener();
   setupPinSnapshotListener();
+  setupCancelPendingListener();
+  setupApplySnapshotListener();
 
   isInitialized = true;
 }
@@ -247,6 +255,50 @@ function submitPinSnapshot(subthreadId: string, requestId?: string) {
       }
       // background 会异步再发 PIN_SNAPSHOT_RESULT / PIN_SNAPSHOT_ERROR
       console.log('[ShadowThreads] BG ack (PIN_SNAPSHOT):', response);
+    }
+  );
+}
+
+function setupCancelPendingListener(): void {
+  window.addEventListener('st-cancel-pending', (() => {
+    if (pendingRequestId) cancelledRequestIds.add(pendingRequestId);
+    clearPending();
+    addMessage({
+      id: `cancel-${Date.now()}`,
+      role: 'SYSTEM',
+      content: '⏹ 已停止生成（本地取消）',
+      createdAt: new Date().toISOString()
+    });
+  }) as EventListener);
+}
+
+// ============================================
+// ✅ Apply Snapshot 监听（来自 sidebar 的 window event）
+// ============================================
+
+function setupApplySnapshotListener(): void {
+  window.addEventListener('st-apply-snapshot', ((e: CustomEvent) => {
+    const { snapshotId, intent, requestId } = e.detail || {};
+    if (!snapshotId) return;
+    submitApplySnapshot(String(snapshotId), intent, requestId);
+  }) as EventListener);
+}
+
+function submitApplySnapshot(snapshotId: string, intent?: string, requestId?: string) {
+  const rid = requestId || genRequestId();
+
+  chrome.runtime.sendMessage(
+    {
+      type: 'APPLY_SNAPSHOT',
+      requestId: rid,
+      data: { snapshotId, intent }
+    },
+    (response) => {
+      if (chrome.runtime.lastError) {
+        handleSubthreadError(chrome.runtime.lastError.message || 'APPLY_SNAPSHOT 发送失败');
+        return;
+      }
+      console.log('[ShadowThreads] BG ack (APPLY_SNAPSHOT):', response);
     }
   );
 }
@@ -452,6 +504,14 @@ function setupMessageListener() {
       switch (msg.type) {
         case 'SUBTHREAD_RESPONSE': {
           const rid = msg.requestId || msg.data?.requestId;
+
+          // ✅ 如果用户已本地取消该 request，则丢弃回包
+          if (rid && cancelledRequestIds.has(rid)) {
+            console.warn('[ShadowThreads] Dropped cancelled response:', rid);
+            cancelledRequestIds.delete(rid);
+            break;
+          }
+
           if (pendingRequestId && rid && rid !== pendingRequestId) {
             console.warn('[ShadowThreads] Ignored stale response:', { rid, pendingRequestId });
             break;
@@ -469,6 +529,14 @@ function setupMessageListener() {
 
         case 'SUBTHREAD_ERROR': {
           const rid = msg.requestId || msg.data?.requestId;
+
+          // ✅ 如果用户已本地取消该 request，则丢弃错误回包
+          if (rid && cancelledRequestIds.has(rid)) {
+            console.warn('[ShadowThreads] Dropped cancelled error:', rid);
+            cancelledRequestIds.delete(rid);
+            break;
+          }
+
           if (pendingRequestId && rid && rid !== pendingRequestId) {
             console.warn('[ShadowThreads] Ignored stale error:', { rid, pendingRequestId });
             break;
@@ -476,6 +544,26 @@ function setupMessageListener() {
 
           handleSubthreadError(msg.data?.error || '请求失败');
           clearPending();
+          break;
+        }
+
+        // ✅ Phase 1.5：Apply Snapshot 成功（中性语义，复用现有 subthread 渲染）
+        case 'APPLY_SNAPSHOT_RESULT': {
+          const d = msg.data || {};
+          const subthreadResponse = d.subthreadResponse;
+
+          if (subthreadResponse) {
+            handleSubthreadResponse(subthreadResponse);
+          } else {
+            handleSubthreadError('APPLY_SNAPSHOT_RESULT 缺少 subthreadResponse');
+          }
+          break;
+        }
+
+        // ✅ Phase 1.5：Apply Snapshot 失败
+        case 'APPLY_SNAPSHOT_ERROR': {
+          const errMsg = msg.data?.error || 'Apply Snapshot 失败';
+          handleSubthreadError(errMsg);
           break;
         }
 

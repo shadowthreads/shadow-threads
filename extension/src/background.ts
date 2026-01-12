@@ -13,8 +13,12 @@ import {
   SubthreadListItem,
   PinSnapshotRequest,
   PinSnapshotResponse,
-  PinSnapshotError
+  PinSnapshotError,
+  ApplySnapshotRequest,
+  ApplySnapshotResult,
+  ApplySnapshotError
 } from './types';
+
 
 // ============================================
 // 配置
@@ -22,6 +26,43 @@ import {
 
 let serverUrl = DEFAULT_SETTINGS.serverUrl;
 let deviceId = '';
+// ✅ MV3: service worker 可能被重启，处理消息时 deviceId 可能尚未加载
+let settingsReadyPromise: Promise<void> | null = null;
+
+async function ensureDeviceReady(): Promise<void> {
+  if (deviceId && deviceId.trim()) return;
+
+  if (!settingsReadyPromise) {
+    settingsReadyPromise = (async () => {
+      try {
+        const result = await chrome.storage.local.get(['serverUrl', 'deviceId']);
+
+        if (result.serverUrl) serverUrl = result.serverUrl;
+
+        if (result.deviceId) {
+          deviceId = result.deviceId;
+        } else {
+          deviceId = generateDeviceId();
+          await chrome.storage.local.set({ deviceId });
+        }
+      } catch (e) {
+        console.error('[ShadowThreads BG] ensureDeviceReady failed:', e);
+        // 兜底：保证不为空
+        if (!deviceId || !deviceId.trim()) deviceId = generateDeviceId();
+        try { await chrome.storage.local.set({ deviceId }); } catch { /* ignore */ }
+      }
+    })().finally(() => {
+      settingsReadyPromise = null;
+    });
+  }
+
+  await settingsReadyPromise;
+
+  if (!deviceId || !deviceId.trim()) {
+    deviceId = generateDeviceId();
+    try { await chrome.storage.local.set({ deviceId }); } catch { /* ignore */ }
+  }
+}
 
 // Debug snapshot（只读旁路，不影响主链路）
 let lastRequest: LastRequestSnapshot | null = null;
@@ -142,6 +183,14 @@ chrome.runtime.onMessage.addListener((
       return false;
     }
 
+    // ✅ Phase 1.5：Apply Snapshot（中性语义：应用 snapshot 信息核心）
+    case 'APPLY_SNAPSHOT': {
+      handleApplySnapshot(message.data as ApplySnapshotRequest, tabId, requestId);
+      sendResponse({ received: true, requestId });
+      return false;
+    }
+
+
     case 'PING': {
       sendResponse({ pong: true, serverUrl, deviceId });
       return false;
@@ -228,6 +277,7 @@ async function handleCreateSubthread(
   requestId?: string
 ) {
   console.log('[ShadowThreads BG] Creating subthread...', { requestId, tabId });
+  await ensureDeviceReady();
 
   if (tabId == null) {
     console.error('[ShadowThreads BG] Missing tabId for CREATE_SUBTHREAD, cannot deliver response.');
@@ -295,7 +345,11 @@ async function handleCreateSubthread(
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Network error';
-    console.error('[ShadowThreads BG] Request failed:', error);
+    console.error('[ShadowThreads BG] Request failed:', {
+      serverUrl,
+      deviceId,
+      error: error instanceof Error ? error.message : String(error)
+    });
 
     await sendToTab(tabId, {
       type: 'SUBTHREAD_ERROR',
@@ -313,6 +367,7 @@ async function handleContinueSubthread(
   requestId?: string
 ) {
   console.log('[ShadowThreads BG] Continuing subthread...', { requestId, tabId });
+  await ensureDeviceReady();
 
   if (tabId == null) {
     console.error('[ShadowThreads BG] Missing tabId for CONTINUE_SUBTHREAD, cannot deliver response.');
@@ -400,6 +455,7 @@ async function handlePinSnapshot(
   requestId?: string
 ) {
   console.log('[ShadowThreads BG] Pin snapshot...', { requestId, tabId });
+  await ensureDeviceReady();
 
   if (tabId == null) {
     console.error('[ShadowThreads BG] Missing tabId for PIN_SNAPSHOT, cannot deliver response.', {
@@ -480,6 +536,110 @@ async function handlePinSnapshot(
     });
 
     finalizeLastRequest(false, msg, undefined, undefined);
+  }
+}
+
+// ============================================
+// ✅ Phase 1.5：Apply Snapshot（把 snapshot 作为“信息核心”应用）
+// 当前实现：调用后端 state-snapshots/:id/continue，并把结果包装为 APPLY_SNAPSHOT_RESULT
+// ============================================
+
+async function handleApplySnapshot(
+  data: ApplySnapshotRequest,
+  tabId?: number,
+  requestId?: string
+) {
+  console.log('[ShadowThreads BG] Apply snapshot...', { requestId, tabId });
+  await ensureDeviceReady();
+
+  if (tabId == null) {
+    console.error('[ShadowThreads BG] Missing tabId for APPLY_SNAPSHOT, cannot deliver response.');
+    return;
+  }
+
+  const snapshotId = String(data?.snapshotId || '').trim();
+  if (!snapshotId) {
+    await sendToTab(tabId, {
+      type: 'APPLY_SNAPSHOT_ERROR',
+      requestId,
+      data: { error: 'missing snapshotId' } satisfies ApplySnapshotError
+    });
+    return;
+  }
+
+  const userQuestion = typeof data?.intent === 'string' ? data.intent.trim() : '';
+  if (!userQuestion) {
+    await sendToTab(tabId, {
+      type: 'APPLY_SNAPSHOT_ERROR',
+      requestId,
+      data: { error: 'missing userQuestion (intent)' } satisfies ApplySnapshotError
+    });
+    return;
+  }
+
+  lastRequest = {
+    requestId: requestId || `no-rid-${Date.now()}`,
+    kind: 'PIN_SNAPSHOT', // 不新增 kind，避免扩大面；这里只做旁路观察
+    startedAt: Date.now(),
+    tabId
+  };
+
+  try {
+    const response = await fetch(`${serverUrl}/api/v1/state-snapshots/${snapshotId}/continue`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Device-ID': deviceId,
+        ...(requestId ? { 'X-Request-ID': requestId } : {})
+      },
+      // intent/providerHint/modelHint 预留：后端未来可以接；现在不传也没问题
+      body: JSON.stringify({
+        userQuestion
+      })
+    });
+
+    let result: any = null;
+    try {
+      result = await response.json();
+    } catch {
+      const msg = `服务器返回非 JSON 响应（HTTP ${response.status}）`;
+      await sendToTab(tabId, {
+        type: 'APPLY_SNAPSHOT_ERROR',
+        requestId,
+        data: { error: msg } satisfies ApplySnapshotError
+      });
+      return;
+    }
+
+    if (result?.success) {
+      const payload: ApplySnapshotResult = {
+        appliedSnapshotId: snapshotId,
+        outcome: 'NEW_THREAD',
+        subthreadResponse: result.data
+      };
+
+      await sendToTab(tabId, {
+        type: 'APPLY_SNAPSHOT_RESULT',
+        requestId,
+        data: payload
+      });
+    } else {
+      const errMsg = result?.error?.message || `请求失败（HTTP ${response.status}）`;
+      await sendToTab(tabId, {
+        type: 'APPLY_SNAPSHOT_ERROR',
+        requestId,
+        data: { error: errMsg } satisfies ApplySnapshotError
+      });
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Network error';
+    console.error('[ShadowThreads BG] APPLY_SNAPSHOT failed:', error);
+
+    await sendToTab(tabId, {
+      type: 'APPLY_SNAPSHOT_ERROR',
+      requestId,
+      data: { error: msg } satisfies ApplySnapshotError
+    });
   }
 }
 

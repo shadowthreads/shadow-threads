@@ -106,6 +106,26 @@ export interface PinSnapshotError {
   error: string;
 }
 
+// ✅ Phase 1.5：Apply Snapshot（中性语义：把 snapshot 作为“信息核心”应用到某个目标）
+// 说明：当前实现 target 仍是 sidebar 内部对话，但协议不绑定 subthread。
+export interface ApplySnapshotRequest {
+  snapshotId: string;
+  intent?: string; // 用户想继续做什么（可选）
+  providerHint?: LLMProvider;
+  modelHint?: string;
+}
+
+export interface ApplySnapshotResult {
+  appliedSnapshotId: string;
+  outcome: 'NEW_THREAD'; // 当前只有一种 outcome，未来可扩展（INJECT_TO_PAGE / COPY_PROMPT / etc.）
+  // 当前实现细节：为了复用现有渲染链路，直接返回后端的 SubthreadResponse
+  subthreadResponse: SubthreadResponse;
+}
+
+export interface ApplySnapshotError {
+  error: string;
+}
+
 export interface SubthreadMessage {
   id: string;
   role: 'USER' | 'ASSISTANT' | 'SYSTEM';
@@ -213,7 +233,11 @@ export type MessageType =
   // ✅ Snapshot Pin（新）
   | 'PIN_SNAPSHOT'
   | 'PIN_SNAPSHOT_RESPONSE'
-  | 'PIN_SNAPSHOT_ERROR';
+  | 'PIN_SNAPSHOT_ERROR'
+  // ✅ Snapshot Apply（Phase 1.5：中性语义，面向可迁移）
+  | 'APPLY_SNAPSHOT'
+  | 'APPLY_SNAPSHOT_RESULT'
+  | 'APPLY_SNAPSHOT_ERROR';
 
 export interface ExtensionMessage<T = unknown> {
   type: MessageType;

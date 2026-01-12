@@ -84,6 +84,7 @@ function createSidebarHTML(): string {
       <div class="st-sidebar-loading" id="st-sidebar-loading" style="display: none;">
         <div class="st-loading-spinner"></div>
         <span id="st-loading-text">正在思考...</span>
+        <button class="st-sidebar-btn" id="st-stop-btn" title="停止">⏹</button>
       </div>
 
       <div class="st-sidebar-error" id="st-sidebar-error" style="display: none;">
@@ -121,6 +122,38 @@ export function initSidebar(): void {
 function bindSidebarEvents(): void {
   document.getElementById('st-sidebar-close')?.addEventListener('click', closeSidebar);
   document.getElementById('st-send-btn')?.addEventListener('click', handleSend);
+  document.getElementById('st-stop-btn')?.addEventListener('click', () => {
+    try {
+      window.dispatchEvent(new CustomEvent('st-cancel-pending'));
+    } catch {
+      // ignore
+    }
+  });
+  // ✅ Phase 1.5：临时入口（后续会替换成 Snapshot 列表面板）
+  // 点击 📋 → 输入 snapshotId → Apply Snapshot
+  document.getElementById('st-sidebar-history')?.addEventListener('click', () => {
+    try {
+      const snapshotId = window.prompt('输入要继续的 Snapshot ID：');
+      if (!snapshotId || !snapshotId.trim()) return;
+
+      const userQuestion = window.prompt('从这个这里开始，你想沿着什么问题继续？（必填）');
+      if (!userQuestion || !userQuestion.trim()) return;
+
+      const requestId = genRequestId();
+      showLoading();
+      hideError();
+
+      window.dispatchEvent(new CustomEvent('st-apply-snapshot', {
+        detail: {
+          snapshotId: snapshotId.trim(),
+          intent: userQuestion.trim(), // ✅ intent 作为 userQuestion
+          requestId
+        }
+      }));
+    } catch {
+      // ignore
+    }
+  });
 
   // ✅ Pin Snapshot：由 content.ts 负责真正发请求（这里仅发事件）
   document.getElementById('st-sidebar-pin')?.addEventListener('click', () => {
