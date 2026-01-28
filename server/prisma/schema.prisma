@@ -32,6 +32,7 @@ model User {
 
   // ✅ StateSnapshot 反向关系（修复 Prisma P1012）
   stateSnapshots StateSnapshot[]
+  taskPackages   TaskPackage[]
 
   @@index([email])
   @@index([deviceId])
@@ -123,7 +124,11 @@ model SourceContext {
   // ✅ PR-B2：Context L1 元信息（窗口化上下文的 meta）
   contextMeta Json?
 
+  contextMessages Json? // ✅ P0-A：W 通路实体数据落库
+
   createdAt DateTime @default(now())
+
+  taskPackages TaskPackage[]
 
   // 关联
   subthread Subthread?
@@ -234,8 +239,6 @@ model StateSnapshot {
   // 版本控制（仍然固定 v1，语义不变）
   version String
 
-  // ========= 新增：状态演化链（不会影响现有逻辑） =========
-
   /// 整条状态链的根（第一版 snapshot）
   rootId String?
 
@@ -245,19 +248,91 @@ model StateSnapshot {
   /// 第几次演化（0 = 初始）
   rev Int @default(0)
 
-  /// 自引用关系（可选但强烈推荐）
+  /// 自引用关系
   parent   StateSnapshot?  @relation("StateSnapshotLineage", fields: [parentId], references: [id])
   children StateSnapshot[] @relation("StateSnapshotLineage")
 
-  // =========================================================
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  taskPackages TaskPackage[]
 
   @@index([userId, createdAt])
   @@index([subthreadId])
   @@index([rootId])
   @@index([parentId])
+
+  // ✅ 工业幂等：同一个 parent 的同一个 rev 只能有一个 child
+  @@unique([parentId, rev], name: "parentId_rev")
+}
+
+model TaskPackage {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 可选关联：从哪个 snapshot 生成（但 package 本身不依赖它）
+  sourceSnapshotId String?
+  sourceSnapshot   StateSnapshot? @relation(fields: [sourceSnapshotId], references: [id], onDelete: SetNull)
+
+  // 可选关联：从哪个 sourceContext 生成（用于追溯证据）
+  sourceContextId String?
+  sourceContext   SourceContext? @relation(fields: [sourceContextId], references: [id], onDelete: SetNull)
+
+  // 人类可读
+  title       String?
+  description String? @db.Text
+
+  // 状态
+  status TaskPackageStatus @default(ACTIVE)
+
+  // 当前活跃 revision（指针）
+  // ✅ 一对一语义：一个 revision 最多只能被一个 package 指向
+  currentRevisionId String? @unique
+  currentRevision   TaskPackageRevision? @relation("PackageCurrentRevision", fields: [currentRevisionId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 反向关系
+  revisions TaskPackageRevision[] @relation("PackageRevisions")
+
+  @@index([userId, createdAt])
+  @@index([sourceSnapshotId])
+  @@index([sourceContextId])
+}
+
+model TaskPackageRevision {
+  id String @id @default(uuid())
+
+  packageId String
+  pkg       TaskPackage @relation("PackageRevisions", fields: [packageId], references: [id], onDelete: Cascade)
+
+  // ✅ 反向：被哪个 TaskPackage 作为 currentRevision 指向（Prisma 需要对称关系）
+  currentFor TaskPackage? @relation("PackageCurrentRevision")
+
+  // 版本号：0,1,2...
+  rev Int @default(0)
+
+  // 核心：迁移包 JSON（建议结构：manifest + state + evidence + constraints + decisions + interfaces + risks）
+  payload Json
+
+  // 校验/摘要（工业字段）
+  schemaVersion String @default("tpkg-0.1")
+  summary       String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  // 幂等/并发：同一个 package 的同一个 rev 只能有一条
+  @@unique([packageId, rev])
+  @@index([packageId, createdAt])
+}
+
+enum TaskPackageStatus {
+  ACTIVE
+  ARCHIVED
+  DELETED
 }
 
 // ============================================

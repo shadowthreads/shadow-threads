@@ -567,12 +567,13 @@ async function handleApplySnapshot(
     return;
   }
 
-  const userQuestion = typeof data?.intent === 'string' ? data.intent.trim() : '';
+  const userQuestion = typeof (data as any)?.userQuestion === 'string' ? String((data as any).userQuestion).trim() : '';
+  const mode = typeof (data as any)?.mode === 'string' ? String((data as any).mode).trim() : 'bootstrap';
   if (!userQuestion) {
     await sendToTab(tabId, {
       type: 'APPLY_SNAPSHOT_ERROR',
       requestId,
-      data: { error: 'missing userQuestion (intent)' } satisfies ApplySnapshotError
+      data: { error: 'missing userQuestion' } satisfies ApplySnapshotError
     });
     return;
   }
@@ -593,9 +594,7 @@ async function handleApplySnapshot(
         ...(requestId ? { 'X-Request-ID': requestId } : {})
       },
       // intent/providerHint/modelHint 预留：后端未来可以接；现在不传也没问题
-      body: JSON.stringify({
-        userQuestion
-      })
+      body: JSON.stringify({ userQuestion, mode: mode || 'bootstrap' })
     });
 
     let result: any = null;

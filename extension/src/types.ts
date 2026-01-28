@@ -106,11 +106,15 @@ export interface PinSnapshotError {
   error: string;
 }
 
-// ✅ Phase 1.5：Apply Snapshot（中性语义：把 snapshot 作为“信息核心”应用到某个目标）
-// 说明：当前实现 target 仍是 sidebar 内部对话，但协议不绑定 subthread。
+// ✅ Phase 2.2：Apply Snapshot（把 snapshot 作为“信息核心”应用到某个目标）
+// - userQuestion：必填（后端 continue endpoint 也要求必填）
+// - mode：注入模式（bootstrap / constrain / review）
+export type ApplyMode = 'bootstrap' | 'constrain' | 'review';
+
 export interface ApplySnapshotRequest {
   snapshotId: string;
-  intent?: string; // 用户想继续做什么（可选）
+  userQuestion: string; // ✅ 必填：从该 snapshot 想推进的问题
+  mode?: ApplyMode;     // ✅ 默认 bootstrap（前后端均可兜底）
   providerHint?: LLMProvider;
   modelHint?: string;
 }

@@ -1,13 +1,24 @@
 {
   "name": "shadow-threads",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@10.24.0",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev:server": "pnpm -C server dev",
+    "build:server": "pnpm -C server build",
+    "prisma:generate": "pnpm -C server prisma:generate",
+    "prisma:migrate": "pnpm -C server prisma:migrate"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "packageManager": "pnpm@10.24.0"
+  "pnpm": {
+    "overrides": {
+      "prisma": "5.22.0",
+      "@prisma/client": "5.22.0",
+      "@prisma/engines": "5.22.0"
+    },
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma"
+    ]
+  }
 }

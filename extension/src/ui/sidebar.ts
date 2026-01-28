@@ -129,14 +129,21 @@ function bindSidebarEvents(): void {
       // ignore
     }
   });
-  // ✅ Phase 1.5：临时入口（后续会替换成 Snapshot 列表面板）
-  // 点击 📋 → 输入 snapshotId → Apply Snapshot
+  // ✅ Phase 2.2：临时入口（后续会替换成 Snapshot Library 面板）
+  // 点击 📋 → 输入 snapshotId → 选择 mode → 输入 userQuestion → Apply Snapshot
   document.getElementById('st-sidebar-history')?.addEventListener('click', () => {
     try {
       const snapshotId = window.prompt('输入要继续的 Snapshot ID：');
       if (!snapshotId || !snapshotId.trim()) return;
 
-      const userQuestion = window.prompt('从这个这里开始，你想沿着什么问题继续？（必填）');
+      const modeRaw = window.prompt('选择 Apply mode：bootstrap / constrain / review（默认 bootstrap）', 'bootstrap');
+      const mode = (modeRaw || 'bootstrap').trim().toLowerCase();
+      if (!['bootstrap', 'constrain', 'review'].includes(mode)) {
+        showError('mode 无效：请填写 bootstrap / constrain / review');
+        return;
+      }
+
+      const userQuestion = window.prompt('从这里开始，你想沿着什么问题继续？（必填）');
       if (!userQuestion || !userQuestion.trim()) return;
 
       const requestId = genRequestId();
@@ -146,7 +153,8 @@ function bindSidebarEvents(): void {
       window.dispatchEvent(new CustomEvent('st-apply-snapshot', {
         detail: {
           snapshotId: snapshotId.trim(),
-          intent: userQuestion.trim(), // ✅ intent 作为 userQuestion
+          userQuestion: userQuestion.trim(),
+          mode,
           requestId
         }
       }));

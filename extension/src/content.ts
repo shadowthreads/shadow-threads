@@ -278,20 +278,24 @@ function setupCancelPendingListener(): void {
 
 function setupApplySnapshotListener(): void {
   window.addEventListener('st-apply-snapshot', ((e: CustomEvent) => {
-    const { snapshotId, intent, requestId } = e.detail || {};
+    const { snapshotId, userQuestion, mode, requestId } = e.detail || {};
     if (!snapshotId) return;
-    submitApplySnapshot(String(snapshotId), intent, requestId);
+    submitApplySnapshot(String(snapshotId), String(userQuestion || ''), String(mode || ''), requestId);
   }) as EventListener);
 }
 
-function submitApplySnapshot(snapshotId: string, intent?: string, requestId?: string) {
+function submitApplySnapshot(snapshotId: string, userQuestion: string, mode?: string, requestId?: string) {
   const rid = requestId || genRequestId();
 
   chrome.runtime.sendMessage(
     {
       type: 'APPLY_SNAPSHOT',
       requestId: rid,
-      data: { snapshotId, intent }
+      data: {
+        snapshotId,
+        userQuestion: userQuestion.trim(),
+        mode: (mode && mode.trim()) ? mode.trim() : 'bootstrap'
+      }
     },
     (response) => {
       if (chrome.runtime.lastError) {

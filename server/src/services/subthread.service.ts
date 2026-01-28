@@ -5,7 +5,7 @@
  * Phase 2.1: StateSnapshot v1 旁路落库（失败不影响主链路）
  */
 
-import { LLMProvider, MessageRole, SubthreadStatus } from '@prisma/client';
+import { LLMProvider, MessageRole, SubthreadStatus, Prisma } from '@prisma/client';
 import { prisma, logger } from '../utils';
 import {
   Errors,
@@ -106,11 +106,10 @@ export class SubthreadService {
     const ABOVE_TARGET = 8;
     const BELOW_TARGET = 0;
 
-    const contextMeta: ContextMetaL1 = {
+    const contextMeta: ContextMetaL1 & { contextMessages?: any[] } = {
       strategy: 'WINDOW_L1',
       aboveTarget: ABOVE_TARGET,
       belowTarget: BELOW_TARGET,
-      // 约定：contextWindow 是“以 anchor 为末尾”的窗口（前端 slice 到 anchorIndex+1）
       aboveCount: contextWindow.length > 0 ? Math.max(0, contextWindow.length - 1) : 0,
       belowCount: 0,
       clipped: contextWindow.length === 0,
@@ -118,8 +117,11 @@ export class SubthreadService {
       anchor: {
         conversationId: input.conversationId,
         messageId: input.messageId,
-        messageRole: input.messageRole,
+        messageRole: input.messageRole
       },
+
+      // ✅ P0-A：把 W 落库（后续 pin/evidence 会用）
+      contextMessages: contextWindow
     };
 
     // 6) 事务内落库 SourceContext + Subthread
@@ -135,6 +137,9 @@ export class SubthreadService {
           selectionText: input.selectionText,
           selectionStart: input.selectionStart,
           selectionEnd: input.selectionEnd,
+
+          // ✅ P0-A：真正落库到 SourceContext.contextMessages（不是只塞进 contextMeta）
+          contextMessages: contextWindow as any,contextMessages: contextWindow as unknown as Prisma.InputJsonValue,
           contextMeta,
         },
       });
