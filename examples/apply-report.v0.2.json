@@ -1,0 +1,26 @@
+{
+  "assistantReply": {
+    "content": "The current package indicates conflicts with a stated constraint. Here is a safe alternative and a best-effort answer within limits."
+  },
+  "applyReport": {
+    "mode": "review",
+    "conflicts": [
+      {
+        "conflictType": "constraint",
+        "field": "constraints.technical[0]",
+        "description": "The user request conflicts with a technical constraint in the package."
+      }
+    ],
+    "usedFields": [
+      "manifest",
+      "intent",
+      "state",
+      "constraints",
+      "interfaces",
+      "risks",
+      "evidence",
+      "history",
+      "compat"
+    ]
+  }
+}

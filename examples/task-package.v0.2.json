@@ -1,0 +1,91 @@
+{
+  "manifest": {
+    "schemaVersion": "tpkg-0.2",
+    "packageId": "00000000-0000-0000-0000-000000000000",
+    "createdAt": "2026-02-05T00:00:00Z",
+    "updatedAt": "2026-02-05T00:00:00Z",
+    "title": "Example TaskPackage v0.2",
+    "description": "Minimal example package for protocol v0.2.",
+    "capabilities": {
+      "applyModes": [
+        "bootstrap",
+        "constrain",
+        "review"
+      ],
+      "conflictHandling": "report_only"
+    }
+  },
+  "intent": {
+    "primary": "Publish the v0.2 protocol specification",
+    "successCriteria": [
+      "Schema and Apply Contract are documented",
+      "Examples are provided"
+    ],
+    "nonGoals": [
+      "Runtime integration"
+    ]
+  },
+  "state": {
+    "facts": [
+      "TaskPackage v0.2 is specified"
+    ],
+    "decisions": [
+      "Apply conflicts are report_only"
+    ],
+    "assumptions": [
+      "Apply engine can read and interpret the package"
+    ],
+    "openLoops": [
+      "Confirm stakeholder approval for v0.2"
+    ]
+  },
+  "constraints": {
+    "technical": [
+      "No runtime code changes"
+    ],
+    "process": [
+      "Docs must match the approved spec"
+    ],
+    "policy": [
+      "No secrets in examples"
+    ]
+  },
+  "interfaces": {
+    "apis": [
+      {
+        "name": "TaskPackage Apply",
+        "type": "http",
+        "contract": "POST /apply with {mode, userQuestion} returns assistantReply + applyReport"
+      }
+    ],
+    "modules": [
+      "protocol-docs"
+    ]
+  },
+  "risks": [
+    {
+      "id": "r1",
+      "description": "Spec drift between docs and implementation",
+      "severity": "medium",
+      "mitigation": "Keep docs authoritative and reviewed"
+    }
+  ],
+  "evidence": [
+    {
+      "type": "snapshot",
+      "sourceId": "snapshot-001",
+      "summary": "Manual smoke flow verified for v0.1"
+    }
+  ],
+  "history": {
+    "origin": "manual",
+    "derivedFrom": "00000000-0000-0000-0000-000000000001",
+    "revision": 0
+  },
+  "compat": {
+    "accepts": [
+      "tpkg-0.1"
+    ],
+    "downgradeStrategy": "lossy-allowed"
+  }
+}

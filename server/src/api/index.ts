@@ -15,6 +15,7 @@ import usersRouter from './users';
 import subthreadsRouter from './subthreads';
 
 import stateSnapshotsRouter from './stateSnapshots';
+import taskPackagesRouter from './taskPackages';
 import debugRouter from './debug';
 
 const router: ExpressRouter = Router();
@@ -53,6 +54,7 @@ router.use('/subthreads', subthreadsRouter);
  */
 router.use('/state-snapshots', stateSnapshotsRouter);
 
+router.use('/task-packages', taskPackagesRouter);
 /**
  * ============================
  * Debug / Dev only

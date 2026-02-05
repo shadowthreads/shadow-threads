@@ -139,7 +139,7 @@ export class SubthreadService {
           selectionEnd: input.selectionEnd,
 
           // ✅ P0-A：真正落库到 SourceContext.contextMessages（不是只塞进 contextMeta）
-          contextMessages: contextWindow as any,contextMessages: contextWindow as unknown as Prisma.InputJsonValue,
+          contextMessages: contextWindow as unknown as Prisma.InputJsonValue,
           contextMeta,
         },
       });
