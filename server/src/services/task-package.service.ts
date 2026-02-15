@@ -1,10 +1,17 @@
-import { LLMProvider, Prisma, TaskPackageStatus } from '@prisma/client';
+﻿import { LLMProvider, Prisma, TaskPackageStatus } from '@prisma/client';
 import { prisma, logger } from '../utils';
 import { LLMService } from './llm.service';
 import { UserService } from './user.service';
 import { normalizeTaskPackagePayload, type ApplyMode, type NormalizedTaskPackage, type NormalizeFindings } from './task-package.normalize';
-import { detectConflicts, type Conflict } from './task-package.conflicts';
+import { detectConflicts as detectQuestionConflicts, type Conflict } from './task-package.conflicts';
 import { buildTaskPackagePayloadV2 } from './task-package.payload';
+import { computeRevisionHash } from './task-package.hash';
+import { stableHash } from '../algebra/semanticDiff/key';
+import type { DomainName } from '../algebra/semanticDiff/types';
+import { applyDelta } from '../algebra/stateTransition/applyDelta';
+import { detectConflicts as detectTransitionConflicts } from '../algebra/stateTransition/detectConflicts';
+import type { TransitionConflict, TransitionFinding, TransitionMode, TransitionPerDomainCounts } from '../algebra/stateTransition/types';
+import { computeRevisionDelta, revisionToSemanticState, summarizeDelta, type RevisionLike } from './task-package-revision-delta';
 
 export type CreatePackageFromSnapshotInput = {
   title?: string;
@@ -23,12 +30,20 @@ export type ApplyPackageInput = {
   mode?: ApplyMode;
   provider?: LLMProvider;
   model?: string;
+  payload?: unknown;
+  schemaVersion?: string;
+};
+
+type ApplyExecutionOptions = {
+  llmMode?: 'legacy' | 'skip';
 };
 
 export type CreateRevisionInput = {
   payload: any;
   summary?: string;
   schemaVersion?: string;
+  setCurrent?: boolean;
+  parentRevisionId?: string | null;
 };
 
 type ApplyReportV2 = {
@@ -46,19 +61,42 @@ type ApplyReportV2 = {
   contract: {
     conflictHandling: 'report_only';
   };
+  transition?: {
+    mode: TransitionMode;
+    deltaSummary: ReturnType<typeof summarizeDelta>;
+    appliedCounts: TransitionPerDomainCounts;
+    rejectedCounts: TransitionPerDomainCounts;
+    conflicts: TransitionConflict[];
+    postApplyConflicts: TransitionConflict[];
+    findings: TransitionFinding[];
+    stateHashBefore: string;
+    stateHashAfter: string;
+  };
 };
+
+const TRANSITION_DOMAIN_ORDER: DomainName[] = ['facts', 'decisions', 'constraints', 'risks', 'assumptions'];
+const TRANSITION_DOMAIN_RANK = new Map<DomainName, number>(
+  TRANSITION_DOMAIN_ORDER.map((domain, index) => [domain, index])
+);
 
 type ErrCode =
   | 'NOT_FOUND'
   | 'FORBIDDEN'
   | 'NO_REVISION'
-  | 'INVALID_INPUT';
+  | 'INVALID_INPUT'
+  | 'CONFLICT_RETRY_EXHAUSTED';
 
 type Ok<T> = { ok: true; data: T };
 type Err = { ok: false; code: ErrCode };
 type Result<T> = Ok<T> | Err;
 
-const SERVICE_ERROR_CODES = new Set<ErrCode>(['NOT_FOUND', 'FORBIDDEN', 'NO_REVISION', 'INVALID_INPUT']);
+const SERVICE_ERROR_CODES = new Set<ErrCode>([
+  'NOT_FOUND',
+  'FORBIDDEN',
+  'NO_REVISION',
+  'INVALID_INPUT',
+  'CONFLICT_RETRY_EXHAUSTED',
+]);
 
 function asErrCode(value: unknown): ErrCode | null {
   if (typeof value !== 'string') return null;
@@ -84,12 +122,74 @@ function normalizeServiceError(err: unknown): ErrCode {
   return 'INVALID_INPUT';
 }
 
+function isRevisionUniqueConflict(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (err.code !== 'P2002') return false;
+  const target = err.meta?.target;
+  if (Array.isArray(target)) {
+    const parts = target.map((item) => String(item));
+    return parts.includes('packageId') && parts.includes('rev');
+  }
+  if (typeof target === 'string') {
+    return target.includes('packageId') && target.includes('rev');
+  }
+  return false;
+}
+
+function isRevisionHashUniqueConflict(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (err.code !== 'P2002') return false;
+  const target = err.meta?.target;
+  if (Array.isArray(target)) {
+    const parts = target.map((item) => String(item));
+    return parts.includes('packageId') && parts.includes('revisionHash');
+  }
+  if (typeof target === 'string') {
+    return target.includes('packageId') && target.includes('revisionHash');
+  }
+  return false;
+}
+
+function sortTransitionConflict(a: TransitionConflict, b: TransitionConflict): number {
+  return (
+    (TRANSITION_DOMAIN_RANK.get(a.domain) ?? 0) - (TRANSITION_DOMAIN_RANK.get(b.domain) ?? 0) ||
+    a.code.localeCompare(b.code) ||
+    (a.key ?? '').localeCompare(b.key ?? '') ||
+    (a.path ?? '').localeCompare(b.path ?? '') ||
+    a.message.localeCompare(b.message)
+  );
+}
+
+function sortTransitionFinding(a: TransitionFinding, b: TransitionFinding): number {
+  return (
+    a.code.localeCompare(b.code) ||
+    (a.count ?? 0) - (b.count ?? 0) ||
+    (a.message ?? '').localeCompare(b.message ?? '') ||
+    (a.domains ?? []).join(',').localeCompare((b.domains ?? []).join(','))
+  );
+}
+
+function buildPostApplyFinding(conflicts: TransitionConflict[]): TransitionFinding | null {
+  if (conflicts.length === 0) return null;
+  return {
+    code: 'POST_APPLY_CONFLICTS',
+    count: conflicts.length,
+    domains: TRANSITION_DOMAIN_ORDER.filter((domain) => conflicts.some((conflict) => conflict.domain === domain)),
+  };
+}
+
+function mergeTransitionFindings(base: TransitionFinding[], postApply: TransitionConflict[]): TransitionFinding[] {
+  const postApplyFinding = buildPostApplyFinding(postApply);
+  const next = postApplyFinding ? [...base, postApplyFinding] : [...base];
+  return next.sort(sortTransitionFinding);
+}
+
 export class TaskPackageService {
   private llmService = new LLMService();
   private userService = new UserService();
 
   /**
-   * 列表
+   * 鍒楄〃
    */
   async list(userId: string): Promise<Result<{ items: any[] }>> {
     const items = await prisma.taskPackage.findMany({
@@ -106,8 +206,7 @@ export class TaskPackageService {
   }
 
   /**
-   * 获取归属校验后的 package（含 currentRevision）
-   */
+   * 鑾峰彇褰掑睘鏍￠獙鍚庣殑 package锛堝惈 currentRevision锛?   */
   async getOwned(userId: string, packageId: string): Promise<any> {
     const pkg = await prisma.taskPackage.findUnique({
       where: { id: packageId },
@@ -120,9 +219,9 @@ export class TaskPackageService {
   }
 
   /**
-   * 从 StateSnapshot 生成一个 TaskPackage（脱钩实体）
-   * - 生成 rev=0
-   * - package.currentRevisionId 指向 rev=0
+   * 浠?StateSnapshot 鐢熸垚涓€涓?TaskPackage锛堣劚閽╁疄浣擄級
+   * - 鐢熸垚 rev=0
+   * - package.currentRevisionId 鎸囧悜 rev=0
    */
   async createFromSnapshot(
     userId: string,
@@ -165,6 +264,7 @@ export class TaskPackageService {
         data: {
           packageId: pkg.id,
           rev: 0,
+          revisionHash: computeRevisionHash(payload),
           schemaVersion: targetSchemaVersion,
           payload: payload as Prisma.InputJsonValue,
           summary: this.makePayloadSummary(payload),
@@ -184,8 +284,7 @@ export class TaskPackageService {
   }
 
   /**
-   * 导入一个 package（JSON）
-   */
+   * 瀵煎叆涓€涓?package锛圝SON锛?   */
   async importPackage(
     userId: string,
     input: ImportPackageInput,
@@ -218,6 +317,7 @@ export class TaskPackageService {
         data: {
           packageId: pkg.id,
           rev: 0,
+          revisionHash: computeRevisionHash(payloadToStore),
           schemaVersion,
           payload: payloadToStore as Prisma.InputJsonValue,
           summary: this.makePayloadSummary(payloadToStore),
@@ -237,48 +337,245 @@ export class TaskPackageService {
   }
 
   /**
-   * 创建新 revision（rev+1），并切 currentRevision
+   * Create revision (rev+1). Default behavior keeps currentRevision unchanged.
    */
   async createRevision(
     userId: string,
     packageId: string,
     input: CreateRevisionInput
-  ): Promise<Result<{ pkg: any; revision: any }>> {
-    try {
-      const pkg = await this.getOwned(userId, packageId);
-      if (!pkg.currentRevision) throwServiceError('NO_REVISION');
+  ): Promise<{
+    packageId: string;
+    revision: { id: string; rev: number; schemaVersion: string; createdAt: Date };
+    currentRevisionId: string | null;
+  }> {
+    const pkg = await prisma.taskPackage.findUnique({
+      where: { id: packageId },
+      select: { id: true, userId: true },
+    });
 
-      const nextRev = (pkg.currentRevision.rev ?? 0) + 1;
-      const payload = input.payload ?? {};
+    if (!pkg) throwServiceError('NOT_FOUND');
+    if (pkg.userId !== userId) throwServiceError('FORBIDDEN');
 
-      const out = await prisma.$transaction(async (tx) => {
-        const rev = await tx.taskPackageRevision.create({
-          data: {
+    const payload = (input.payload ?? {}) as Prisma.InputJsonValue;
+    const schemaVersion = String(input.schemaVersion || (input.payload as any)?.manifest?.schemaVersion || 'tpkg-0.1');
+    const revisionHash = computeRevisionHash(payload);
+    const explicitParentRevisionId = input.parentRevisionId;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await prisma.$transaction(async (tx) => {
+          const ownedPackage = await tx.taskPackage.findUnique({
+            where: { id: packageId },
+            select: { id: true, userId: true, currentRevisionId: true },
+          });
+
+          if (!ownedPackage) throwServiceError('NOT_FOUND');
+          if (ownedPackage.userId !== userId) throwServiceError('FORBIDDEN');
+
+          const existingRevision = await tx.taskPackageRevision.findFirst({
+            where: { packageId, revisionHash },
+            select: { id: true, rev: true, schemaVersion: true, createdAt: true },
+          });
+
+          if (existingRevision) {
+            let currentRevisionId = ownedPackage.currentRevisionId;
+            if (input.setCurrent === true) {
+              const updatedPackage = await tx.taskPackage.update({
+                where: { id: packageId },
+                data: { currentRevisionId: existingRevision.id },
+                select: { currentRevisionId: true },
+              });
+              currentRevisionId = updatedPackage.currentRevisionId;
+            }
+
+            return {
+              packageId,
+              revision: existingRevision,
+              currentRevisionId,
+            };
+          }
+
+          const revMax = await tx.taskPackageRevision.aggregate({
+            where: { packageId },
+            _max: { rev: true },
+          });
+          const nextRev = (revMax._max.rev ?? -1) + 1;
+          const parentRevisionId =
+            explicitParentRevisionId !== undefined
+              ? explicitParentRevisionId
+              : (ownedPackage.currentRevisionId ?? null);
+
+          if (parentRevisionId) {
+            const parentRevision = await tx.taskPackageRevision.findUnique({
+              where: { id: parentRevisionId },
+              select: { packageId: true },
+            });
+            if (!parentRevision || parentRevision.packageId !== packageId) {
+              throwServiceError('INVALID_INPUT');
+            }
+          }
+
+          const revision = await tx.taskPackageRevision.create({
+            data: {
+              packageId,
+              parentRevisionId,
+              rev: nextRev,
+              revisionHash,
+              schemaVersion,
+              payload,
+              summary: input.summary ?? this.makePayloadSummary(payload),
+            },
+            select: { id: true, rev: true, schemaVersion: true, createdAt: true },
+          });
+
+          let currentRevisionId = ownedPackage.currentRevisionId;
+          if (input.setCurrent === true) {
+            const updatedPackage = await tx.taskPackage.update({
+              where: { id: packageId },
+              data: { currentRevisionId: revision.id },
+              select: { currentRevisionId: true },
+            });
+            currentRevisionId = updatedPackage.currentRevisionId;
+          }
+
+          return {
             packageId,
-            rev: nextRev,
-            schemaVersion: String(input.schemaVersion || payload?.manifest?.schemaVersion || 'tpkg-0.1'),
-            payload: payload as Prisma.InputJsonValue,
-            summary: input.summary ?? this.makePayloadSummary(payload),
-          },
+            revision,
+            currentRevisionId,
+          };
         });
-
-        const updated = await tx.taskPackage.update({
-          where: { id: packageId },
-          data: { currentRevisionId: rev.id },
-          include: { currentRevision: true },
-        });
-
-        return { pkg: updated, revision: rev };
-      });
-
-      return { ok: true, data: out };
-    } catch (err) {
-      return { ok: false, code: normalizeServiceError(err) };
+      } catch (err) {
+        if (isRevisionHashUniqueConflict(err)) {
+          const existingRevision = await prisma.taskPackageRevision.findFirst({
+            where: { packageId, revisionHash },
+            select: { id: true, rev: true, schemaVersion: true, createdAt: true },
+          });
+          if (existingRevision) {
+            let currentRevisionId =
+              (
+                await prisma.taskPackage.findUnique({
+                  where: { id: packageId },
+                  select: { currentRevisionId: true },
+                })
+              )?.currentRevisionId ?? null;
+            if (input.setCurrent === true) {
+              const updatedPackage = await prisma.taskPackage.update({
+                where: { id: packageId },
+                data: { currentRevisionId: existingRevision.id },
+                select: { currentRevisionId: true },
+              });
+              currentRevisionId = updatedPackage.currentRevisionId;
+            }
+            return {
+              packageId,
+              revision: existingRevision,
+              currentRevisionId,
+            };
+          }
+          if (attempt === 0) continue;
+          throwServiceError('CONFLICT_RETRY_EXHAUSTED');
+        }
+        if (isRevisionUniqueConflict(err)) {
+          if (attempt === 0) continue;
+          throwServiceError('CONFLICT_RETRY_EXHAUSTED');
+        }
+        throw err;
+      }
     }
+
+    throwServiceError('CONFLICT_RETRY_EXHAUSTED');
+  }
+
+  async setCurrentRevision(
+    userId: string,
+    packageId: string,
+    revisionId: string
+  ): Promise<{ packageId: string; currentRevisionId: string; currentRevNumber: number }> {
+    const pkg = await prisma.taskPackage.findUnique({
+      where: { id: packageId },
+      select: { id: true, userId: true },
+    });
+
+    if (!pkg) throwServiceError('NOT_FOUND');
+    if (pkg.userId !== userId) throwServiceError('FORBIDDEN');
+
+    const revision = await prisma.taskPackageRevision.findUnique({
+      where: { id: revisionId },
+      select: { id: true, packageId: true, rev: true },
+    });
+
+    if (!revision) throwServiceError('NOT_FOUND');
+    if (revision.packageId !== packageId) throwServiceError('INVALID_INPUT');
+
+    await prisma.taskPackage.update({
+      where: { id: packageId },
+      data: { currentRevisionId: revisionId },
+    });
+
+    return {
+      packageId,
+      currentRevisionId: revisionId,
+      currentRevNumber: revision.rev,
+    };
+  }
+
+  async getPackage(userId: string, packageId: string): Promise<{
+    package: {
+      id: string;
+      title: string | null;
+      description: string | null;
+      status: TaskPackageStatus;
+      createdAt: Date;
+      updatedAt: Date;
+      sourceSnapshotId: string | null;
+      sourceContextId: string | null;
+    };
+    currentRevision: {
+      id: string;
+      rev: number;
+      schemaVersion: string;
+      createdAt: Date;
+      summary: string | null;
+    } | null;
+  }> {
+    const pkg = await prisma.taskPackage.findUnique({
+      where: { id: packageId },
+      select: {
+        id: true,
+        userId: true,
+        title: true,
+        description: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        sourceSnapshotId: true,
+        sourceContextId: true,
+        currentRevision: {
+          select: { id: true, rev: true, schemaVersion: true, createdAt: true, summary: true },
+        },
+      },
+    });
+
+    if (!pkg) throwServiceError('NOT_FOUND');
+    if (pkg.userId !== userId) throwServiceError('FORBIDDEN');
+
+    return {
+      package: {
+        id: pkg.id,
+        title: pkg.title,
+        description: pkg.description,
+        status: pkg.status,
+        createdAt: pkg.createdAt,
+        updatedAt: pkg.updatedAt,
+        sourceSnapshotId: pkg.sourceSnapshotId,
+        sourceContextId: pkg.sourceContextId,
+      },
+      currentRevision: pkg.currentRevision,
+    };
   }
 
   /**
-   * 导出当前 revision 的 payload
+   * 瀵煎嚭褰撳墠 revision 鐨?payload
    */
   async exportPackage(userId: string, packageId: string): Promise<any> {
     const pkg = await this.getOwned(userId, packageId);
@@ -305,27 +602,84 @@ export class TaskPackageService {
   }
 
   /**
-   * Apply：输入 packageId + userQuestion → LLM 回复 + applyReport
+   * Apply锛氳緭鍏?packageId + userQuestion 鈫?LLM 鍥炲 + applyReport
    */
-  async applyPackage(userId: string, packageId: string, input: ApplyPackageInput): Promise<Result<any>> {
+  async applyPackage(
+    userId: string,
+    packageId: string,
+    input: ApplyPackageInput,
+    opts?: ApplyExecutionOptions
+  ): Promise<Result<any>> {
     try {
       const pkg = await this.getOwned(userId, packageId);
       if (!pkg.currentRevision) throwServiceError('NO_REVISION');
 
-      const payload = pkg.currentRevision.payload as any;
+      const currentPayload = pkg.currentRevision.payload as any;
+      const targetPayload = (input.payload ?? currentPayload) as any;
       const mode = (input.mode || 'bootstrap') as ApplyMode;
+      const llmMode = opts?.llmMode ?? 'legacy';
+      const transitionMode: TransitionMode = 'best_effort';
 
-      const provider: LLMProvider = input.provider || LLMProvider.OPENAI;
-      const model: string = input.model || 'gpt-4o-mini';
-      const apiKey = await this.userService.getDecryptedApiKey(userId, provider);
+      const baseRevision: RevisionLike = {
+        payload: currentPayload,
+        schemaVersion: pkg.currentRevision.schemaVersion,
+        revisionHash: typeof pkg.currentRevision.revisionHash === 'string' ? pkg.currentRevision.revisionHash : undefined,
+      };
+      const targetRevision: RevisionLike = {
+        payload: targetPayload,
+        schemaVersion: input.schemaVersion ?? String(targetPayload?.manifest?.schemaVersion || pkg.currentRevision.schemaVersion),
+        revisionHash: typeof targetPayload?.revisionHash === 'string' ? targetPayload.revisionHash : undefined,
+      };
 
-      const { normalized, findings } = normalizeTaskPackagePayload(payload, {
+      const baseState = revisionToSemanticState(baseRevision);
+      const delta = computeRevisionDelta(baseRevision, targetRevision);
+      const deltaSummary = summarizeDelta(delta);
+      const transitionBase = applyDelta(baseState, delta, { mode: transitionMode });
+      const transitionConflicts = [...transitionBase.conflicts].sort(sortTransitionConflict);
+      const postApplyConflicts = detectTransitionConflicts(transitionBase.nextState).sort(sortTransitionConflict);
+      const transitionFindings = mergeTransitionFindings(transitionBase.findings, postApplyConflicts);
+      const transitionReport: NonNullable<ApplyReportV2['transition']> = {
+        mode: transitionMode,
+        deltaSummary,
+        appliedCounts: transitionBase.applied.perDomain,
+        rejectedCounts: transitionBase.rejected.perDomain,
+        conflicts: transitionConflicts,
+        postApplyConflicts,
+        findings: transitionFindings,
+        stateHashBefore: stableHash(baseState),
+        stateHashAfter: stableHash(transitionBase.nextState),
+      };
+
+      const { normalized, findings } = normalizeTaskPackagePayload(targetPayload, {
         revision: pkg.currentRevision.rev ?? 0,
         sourceSnapshotId: pkg.sourceSnapshotId,
       });
-      const conflicts = detectConflicts({ userQuestion: input.userQuestion, normalized, mode });
-      const applyReport = this.buildApplyReportV2(normalized, mode, findings, conflicts);
-      const systemPrompt = this.buildApplySystemPromptV2(normalized, mode, findings, conflicts, applyReport);
+      const conflicts = detectQuestionConflicts({ userQuestion: input.userQuestion, normalized, mode });
+      const applyReport = this.buildApplyReportV2(normalized, mode, findings, conflicts, transitionReport);
+      const provider: LLMProvider = input.provider || LLMProvider.OPENAI;
+      const model: string = input.model || 'gpt-4o-mini';
+
+      if (llmMode === 'skip') {
+        return {
+          ok: true,
+          data: {
+            packageId: pkg.id,
+            revisionId: pkg.currentRevision.id,
+            revisionRev: pkg.currentRevision.rev,
+            provider,
+            model,
+            assistantReply: { content: '' },
+            applyReport,
+          },
+        };
+      }
+
+      const apiKey = await this.userService.getDecryptedApiKey(userId, provider);
+      const { normalized: digestState, findings: digestFindings } = normalizeTaskPackagePayload(transitionBase.nextState, {
+        revision: pkg.currentRevision.rev ?? 0,
+        sourceSnapshotId: pkg.sourceSnapshotId,
+      });
+      const systemPrompt = this.buildApplySystemPromptV2(digestState, mode, digestFindings, conflicts, applyReport);
 
       const llmResp = await this.llmService.complete({
         messages: [
@@ -354,8 +708,8 @@ export class TaskPackageService {
   }
 
   /**
-   * 兼容旧 router：buildApplyPayload(payload, mode) 这个名字
-   * 现在内部就是 buildApplySystemPrompt
+   * 鍏煎鏃?router锛歜uildApplyPayload(payload, mode) 杩欎釜鍚嶅瓧
+   * 鐜板湪鍐呴儴灏辨槸 buildApplySystemPrompt
    */
   buildApplyPayload(payload: any, mode: ApplyMode) {
     return this.buildApplySystemPrompt(payload, mode);
@@ -369,7 +723,8 @@ export class TaskPackageService {
     normalized: NormalizedTaskPackage,
     mode: ApplyMode,
     findings: NormalizeFindings,
-    conflicts: Conflict[]
+    conflicts: Conflict[],
+    transition: NonNullable<ApplyReportV2['transition']>
   ): ApplyReportV2 {
     const counts = {
       facts: normalized.state.facts.length,
@@ -386,6 +741,7 @@ export class TaskPackageService {
       conflicts,
       counts,
       contract: { conflictHandling: 'report_only' },
+      transition,
     };
   }
 
@@ -521,6 +877,11 @@ export class TaskPackageService {
       ...missingLines,
       ``,
       formatConflicts(),
+      ``,
+      `Transition.mode: ${applyReport.transition?.mode ?? '(none)'}`,
+      `Transition.stateHash: before=${applyReport.transition?.stateHashBefore ?? '(none)'} | after=${applyReport.transition?.stateHashAfter ?? '(none)'}`,
+      `Transition.modifiedDomains: ${applyReport.transition?.deltaSummary.modifiedDomains.join(', ') || '(none)'}`,
+      `Transition.postApplyConflicts: ${applyReport.transition?.postApplyConflicts.length ?? 0}`,
       ``,
       `ApplyReport.counts: facts=${applyReport.counts.facts}, decisions=${applyReport.counts.decisions}, assumptions=${applyReport.counts.assumptions}, openLoops=${applyReport.counts.openLoops}, evidence=${applyReport.counts.evidence}`,
       `ApplyReport.contract: conflictHandling=${applyReport.contract.conflictHandling}`,
