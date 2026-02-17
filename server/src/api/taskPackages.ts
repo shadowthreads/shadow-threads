@@ -1,39 +1,79 @@
 /**
  * TaskPackage API Router (thin controller)
- * - validate/auth only
- * - all business moved to TaskPackageService
+ * - auth + validate + service call + error mapping only
  */
 
-import { Router, type Router as ExpressRouter } from 'express';
+import { LLMProvider } from '@prisma/client';
+import { Router, type Response } from 'express';
 import { z } from 'zod';
+
 import { asyncHandler, requireAuth, validate } from '../middleware';
 import { idParamSchema } from '../middleware/validation';
-import { LLMProvider } from '@prisma/client';
 import { TaskPackageService } from '../services/task-package.service';
 
-const router: ExpressRouter = Router();
+const router = Router();
 const svc = new TaskPackageService();
 
-/** helper: Express params can be string | string[] */
-function paramToString(v: unknown): string {
-  if (Array.isArray(v)) return String(v[0] ?? '');
-  return String(v ?? '');
+const targetSchemaVersionSchema = z.enum(['tpkg-0.1', 'tpkg-0.2']);
+
+/** Express params may be string | string[] */
+function paramToString(value: unknown): string {
+  if (Array.isArray(value)) return String(value[0] ?? '');
+  return String(value ?? '');
 }
 
-function sendServiceError(res: any, code: string): void {
-  res
-    .status(code === 'NOT_FOUND' ? 404 : code === 'FORBIDDEN' ? 403 : 400)
-    .json({ success: false, error: { code, message: code } });
+function extractErrorCode(err: unknown): unknown {
+  if (typeof err === 'string') return err;
+  if (err instanceof Error) return (err as any).code ?? err.message;
+  if (err && typeof err === 'object' && 'code' in err) return (err as any).code;
+  return undefined;
 }
 
-/**
- * POST /task-packages/from-snapshot
- * 从 snapshot 生成 task package（rev=0 + currentRevision 指向它）
- */
+function normalizeServiceCode(code: unknown):
+  | 'NOT_FOUND'
+  | 'FORBIDDEN'
+  | 'NO_REVISION'
+  | 'INVALID_INPUT'
+  | 'CONFLICT_RETRY_EXHAUSTED'
+  | 'UNKNOWN' {
+  if (typeof code !== 'string') return 'UNKNOWN';
+  if (
+    code === 'NOT_FOUND' ||
+    code === 'FORBIDDEN' ||
+    code === 'NO_REVISION' ||
+    code === 'INVALID_INPUT' ||
+    code === 'CONFLICT_RETRY_EXHAUSTED'
+  ) {
+    return code;
+  }
+  return 'UNKNOWN';
+}
+
+function sendServiceError(res: Response, code: unknown): void {
+  const normalized = normalizeServiceCode(code);
+  const status =
+    normalized === 'NOT_FOUND'
+      ? 404
+      : normalized === 'FORBIDDEN'
+      ? 403
+      : normalized === 'CONFLICT_RETRY_EXHAUSTED'
+      ? 409
+      : 400;
+
+  res.status(status).json({
+    success: false,
+    error: {
+      code: normalized,
+      message: normalized,
+    },
+  });
+}
+
 const createFromSnapshotSchema = z.object({
   sourceSnapshotId: z.string().uuid(),
   title: z.string().max(200).optional(),
   description: z.string().max(4000).optional(),
+  targetSchemaVersion: targetSchemaVersionSchema.optional(),
 });
 type CreateFromSnapshotBody = z.infer<typeof createFromSnapshotSchema>;
 
@@ -43,31 +83,25 @@ router.post(
   validate({ body: createFromSnapshotSchema }),
   asyncHandler(async (req, res) => {
     const userId = req.userId!;
-    const { sourceSnapshotId, title, description } = req.body as CreateFromSnapshotBody;
+    const { sourceSnapshotId, title, description, targetSchemaVersion } = req.body as CreateFromSnapshotBody;
 
     try {
-      const created = await svc.createFromSnapshot(userId, {
-        sourceSnapshotId,
-        title,
-        description,
-      });
-
-      res.json({ success: true, data: created });
-    } catch (e: any) {
-      const code = String(e?.message || 'UNKNOWN');
-      sendServiceError(res, code);
+      const input = { sourceSnapshotId, title, description };
+      const data = targetSchemaVersion
+        ? await svc.createFromSnapshot(userId, input, { targetSchemaVersion })
+        : await svc.createFromSnapshot(userId, input);
+      res.json({ success: true, data });
+    } catch (err: unknown) {
+      sendServiceError(res, extractErrorCode(err));
     }
   })
 );
 
-/**
- * POST /task-packages/import
- * 导入一个 package（payload JSON）
- */
 const importPackageSchema = z.object({
   title: z.string().max(200).optional(),
   description: z.string().max(4000).optional(),
-  payload: z.any(),
+  payload: z.unknown(),
+  targetSchemaVersion: targetSchemaVersionSchema.optional(),
 });
 type ImportPackageBody = z.infer<typeof importPackageSchema>;
 
@@ -77,44 +111,110 @@ router.post(
   validate({ body: importPackageSchema }),
   asyncHandler(async (req, res) => {
     const userId = req.userId!;
-    const { title, description, payload } = req.body as ImportPackageBody;
+    const { title, description, payload, targetSchemaVersion } = req.body as ImportPackageBody;
 
     try {
-      const created = await svc.importPackage(userId, { title, description, payload });
-      res.json({ success: true, data: created });
-    } catch (e: any) {
-      const code = String(e?.message || 'UNKNOWN');
-      sendServiceError(res, code);
+      const input = { title, description, payload };
+      const data = targetSchemaVersion
+        ? await svc.importPackage(userId, input, { targetSchemaVersion })
+        : await svc.importPackage(userId, input);
+      res.json({ success: true, data });
+    } catch (err: unknown) {
+      sendServiceError(res, extractErrorCode(err));
     }
   })
 );
 
-/**
- * GET /task-packages/:id/export
- * 导出当前 revision 的 payload
- */
+router.get(
+  '/:id',
+  requireAuth,
+  validate({ params: idParamSchema }),
+  asyncHandler(async (req, res) => {
+    const userId = req.userId!;
+    const packageId = paramToString((req.params as { id?: string | string[] }).id);
+
+    try {
+      const data = await svc.getPackage(userId, packageId);
+      res.json({ success: true, data });
+    } catch (err: unknown) {
+      sendServiceError(res, extractErrorCode(err));
+    }
+  })
+);
+
+const createRevisionSchema = z.object({
+  payload: z.unknown(),
+  schemaVersion: z.string().optional(),
+  summary: z.string().optional(),
+  setCurrent: z.boolean().optional(),
+  parentRevisionId: z.string().uuid().nullable().optional(),
+});
+type CreateRevisionBody = z.infer<typeof createRevisionSchema>;
+
+router.post(
+  '/:id/revisions',
+  requireAuth,
+  validate({ params: idParamSchema, body: createRevisionSchema }),
+  asyncHandler(async (req, res) => {
+    const userId = req.userId!;
+    const packageId = paramToString((req.params as { id?: string | string[] }).id);
+    const body = req.body as CreateRevisionBody;
+
+    try {
+      const data = await svc.createRevision(userId, packageId, {
+        payload: body.payload ?? {},
+        schemaVersion: body.schemaVersion,
+        summary: body.summary,
+        setCurrent: body.setCurrent,
+        parentRevisionId: body.parentRevisionId,
+      });
+      res.json({ success: true, data });
+    } catch (err: unknown) {
+      sendServiceError(res, extractErrorCode(err));
+    }
+  })
+);
+
+const setCurrentRevisionSchema = z.object({
+  revisionId: z.string().uuid(),
+});
+type SetCurrentRevisionBody = z.infer<typeof setCurrentRevisionSchema>;
+
+router.post(
+  '/:id/set-current',
+  requireAuth,
+  validate({ params: idParamSchema, body: setCurrentRevisionSchema }),
+  asyncHandler(async (req, res) => {
+    const userId = req.userId!;
+    const packageId = paramToString((req.params as { id?: string | string[] }).id);
+    const { revisionId } = req.body as SetCurrentRevisionBody;
+
+    try {
+      const data = await svc.setCurrentRevision(userId, packageId, revisionId);
+      res.json({ success: true, data });
+    } catch (err: unknown) {
+      sendServiceError(res, extractErrorCode(err));
+    }
+  })
+);
+
 router.get(
   '/:id/export',
   requireAuth,
   validate({ params: idParamSchema }),
   asyncHandler(async (req, res) => {
     const userId = req.userId!;
-    const packageId = paramToString((req.params as any).id);
+    const packageId = paramToString((req.params as { id?: string | string[] }).id);
 
     try {
       const data = await svc.exportPackage(userId, packageId);
       res.json({ success: true, data });
-    } catch (e: any) {
-      const code = String(e?.message || 'UNKNOWN');
-      sendServiceError(res, code);
+    } catch (err: unknown) {
+      sendServiceError(res, extractErrorCode(err));
     }
   })
 );
 
-/**
- * POST /task-packages/:id/apply
- * Apply：输入 userQuestion → LLM 回复 + applyReport
- */
 const applySchema = z.object({
   userQuestion: z.string().min(1).max(10000),
   mode: z.enum(['bootstrap', 'constrain', 'review']).optional(),
@@ -129,7 +229,7 @@ router.post(
   validate({ params: idParamSchema, body: applySchema }),
   asyncHandler(async (req, res) => {
     const userId = req.userId!;
-    const packageId = paramToString((req.params as any).id);
+    const packageId = paramToString((req.params as { id?: string | string[] }).id);
     const { userQuestion, mode, provider, model } = req.body as ApplyBody;
 
     try {
@@ -146,9 +246,8 @@ router.post(
       }
 
       res.json({ success: true, data: result.data });
-    } catch (e: any) {
-      const code = String(e?.message || 'UNKNOWN');
-      sendServiceError(res, code);
+    } catch (err: unknown) {
+      sendServiceError(res, extractErrorCode(err));
     }
   })
 );

@@ -4,6 +4,7 @@ import express from 'express';
 import apiRouter from '../src/api';
 import { errorHandler, notFoundHandler } from '../src/middleware';
 import { prisma } from '../src/utils';
+import { TaskPackageService } from '../src/services/task-package.service';
 
 const mockState = vi.hoisted(() => {
   let userId = '';
@@ -194,16 +195,151 @@ describe('TaskPackage integration flow', () => {
     expect(createPackageRes.status).toBe(200);
     expect(createPackageRes.body.success).toBe(true);
     const packageId = createPackageRes.body.data.pkg.id;
-    const revisionId = createPackageRes.body.data.revision.id;
+    const rev0Id = createPackageRes.body.data.revision.id;
     expect(packageId).toBeTruthy();
-    expect(revisionId).toBeTruthy();
+    expect(rev0Id).toBeTruthy();
     createdPackageIds.push(packageId);
+    const rev0Row = await prisma.taskPackageRevision.findUnique({
+      where: { id: rev0Id },
+      select: { revisionHash: true },
+    });
+    expect(typeof rev0Row?.revisionHash).toBe('string');
+    expect((rev0Row?.revisionHash || '').length).toBeGreaterThan(0);
+
+    const revisionPayload = {
+      manifest: {
+        schemaVersion: 'tpkg-0.2',
+        packageId: '22222222-2222-2222-2222-222222222222',
+        createdAt: '2026-02-06T00:00:00Z',
+        updatedAt: '2026-02-06T00:00:00Z',
+        title: 'Smoke Rev1',
+        description: 'Revision 1 payload',
+        capabilities: {
+          applyModes: ['bootstrap', 'constrain', 'review'],
+          conflictHandling: 'report_only',
+        },
+      },
+      intent: {
+        primary: 'Stabilize package flow',
+        successCriteria: ['revision pointer works'],
+        nonGoals: [],
+      },
+      state: {
+        facts: ['f1'],
+        decisions: ['d1'],
+        assumptions: [],
+        openLoops: [],
+      },
+      constraints: {
+        technical: ['keep deterministic'],
+        process: [],
+        policy: [],
+      },
+      interfaces: {
+        apis: [],
+        modules: [],
+      },
+      risks: [],
+      evidence: [{ type: 'snapshot', sourceId: pinnedSnapshotId, summary: 'Pinned snapshot evidence' }],
+      history: {
+        origin: 'snapshot',
+        revision: 1,
+      },
+      compat: {
+        accepts: ['tpkg-0.1'],
+        downgradeStrategy: 'lossy-allowed',
+      },
+    };
+
+    const createRevisionRes = await request(app)
+      .post(`/api/v1/task-packages/${packageId}/revisions`)
+      .send({
+        payload: revisionPayload,
+        schemaVersion: 'tpkg-0.2',
+        summary: 'rev1',
+      });
+
+    expect(createRevisionRes.status).toBe(200);
+    expect(createRevisionRes.body.success).toBe(true);
+    expect(createRevisionRes.body.data.packageId).toBe(packageId);
+    expect(createRevisionRes.body.data.revision.rev).toBe(1);
+    expect(createRevisionRes.body.data.currentRevisionId).toBe(rev0Id);
+    const rev1Id = createRevisionRes.body.data.revision.id;
+    expect(rev1Id).toBeTruthy();
+    const rev1Row = await prisma.taskPackageRevision.findUnique({
+      where: { id: rev1Id },
+      select: { parentRevisionId: true, revisionHash: true },
+    });
+    expect(rev1Row?.parentRevisionId).toBe(rev0Id);
+    expect(typeof rev1Row?.revisionHash).toBe('string');
+    expect((rev1Row?.revisionHash || '').length).toBeGreaterThan(0);
+
+    const revisionCountBeforeDuplicate = await prisma.taskPackageRevision.count({
+      where: { packageId },
+    });
+    const createRevisionDuplicateRes = await request(app)
+      .post(`/api/v1/task-packages/${packageId}/revisions`)
+      .send({
+        payload: revisionPayload,
+        schemaVersion: 'tpkg-0.2',
+        summary: 'rev1-duplicate',
+      });
+    expect(createRevisionDuplicateRes.status).toBe(200);
+    expect(createRevisionDuplicateRes.body.success).toBe(true);
+    expect(createRevisionDuplicateRes.body.data.revision.id).toBe(rev1Id);
+    expect(createRevisionDuplicateRes.body.data.revision.rev).toBe(1);
+    expect(createRevisionDuplicateRes.body.data.currentRevisionId).toBe(rev0Id);
+    const revisionCountAfterDuplicate = await prisma.taskPackageRevision.count({
+      where: { packageId },
+    });
+    expect(revisionCountAfterDuplicate).toBe(revisionCountBeforeDuplicate);
+
+    const setCurrentRes = await request(app)
+      .post(`/api/v1/task-packages/${packageId}/set-current`)
+      .send({ revisionId: rev1Id });
+
+    expect(setCurrentRes.status).toBe(200);
+    expect(setCurrentRes.body.success).toBe(true);
+    expect(setCurrentRes.body.data.packageId).toBe(packageId);
+    expect(setCurrentRes.body.data.currentRevisionId).toBe(rev1Id);
+    expect(setCurrentRes.body.data.currentRevNumber).toBe(1);
+
+    const createRevision2Res = await request(app)
+      .post(`/api/v1/task-packages/${packageId}/revisions`)
+      .send({
+        payload: {
+          ...revisionPayload,
+          history: { ...revisionPayload.history, revision: 2 },
+        },
+        schemaVersion: 'tpkg-0.2',
+        summary: 'rev2',
+      });
+
+    expect(createRevision2Res.status).toBe(200);
+    expect(createRevision2Res.body.success).toBe(true);
+    expect(createRevision2Res.body.data.revision.rev).toBe(2);
+    expect(createRevision2Res.body.data.currentRevisionId).toBe(rev1Id);
+    const rev2Id = createRevision2Res.body.data.revision.id;
+    expect(rev2Id).toBeTruthy();
+    const rev2Row = await prisma.taskPackageRevision.findUnique({
+      where: { id: rev2Id },
+      select: { parentRevisionId: true },
+    });
+    expect(rev2Row?.parentRevisionId).toBe(rev1Id);
+
+    const getPackageRes = await request(app).get(`/api/v1/task-packages/${packageId}`);
+    expect(getPackageRes.status).toBe(200);
+    expect(getPackageRes.body.success).toBe(true);
+    expect(getPackageRes.body.data.package.id).toBe(packageId);
+    expect(getPackageRes.body.data.currentRevision.id).toBe(rev1Id);
+    expect(getPackageRes.body.data.currentRevision.rev).toBe(1);
 
     const exportRes = await request(app).get(`/api/v1/task-packages/${packageId}/export`);
     expect(exportRes.status).toBe(200);
     expect(exportRes.body.success).toBe(true);
-    expect(exportRes.body.data.revision.rev).toBe(0);
-    expect(exportRes.body.data.payload.manifest.schemaVersion).toBe('tpkg-0.1');
+    expect(exportRes.body.data.revision.id).toBe(rev1Id);
+    expect(exportRes.body.data.revision.rev).toBe(1);
+    expect(exportRes.body.data.payload.manifest.schemaVersion).toBe('tpkg-0.2');
 
     const applyRes = await request(app)
       .post(`/api/v1/task-packages/${packageId}/apply`)
@@ -211,18 +347,23 @@ describe('TaskPackage integration flow', () => {
 
     expect(applyRes.status).toBe(200);
     expect(applyRes.body.success).toBe(true);
+    expect(applyRes.body.data.revisionRev).toBe(1);
     expect(applyRes.body.data.assistantReply.content).toBe(mockState.fixedReply);
-    expect(applyRes.body.data.applyReport.contract.conflictHandling).toBe('report_only');
-    expect(applyRes.body.data.applyReport.findings.liftedFromVersion).not.toBe('tpkg-0.2');
-    expect(applyRes.body.data.applyReport.findings.missingFields).toContain('intent.successCriteria');
-    expect(applyRes.body.data.applyReport.conflicts.length).toBe(0);
-    expect(applyRes.body.data.applyReport.counts).toEqual(
+    expect(mockState.getLastSystemPrompt()).toContain('--- PACKAGE DIGEST ---');
+    expect(applyRes.body.data.applyReport).toEqual(
       expect.objectContaining({
-        facts: expect.any(Number),
-        decisions: expect.any(Number),
-        assumptions: expect.any(Number),
-        openLoops: expect.any(Number),
-        evidence: expect.any(Number),
+        mode: 'review',
+        findings: expect.any(Object),
+        conflicts: expect.any(Array),
+        usedFields: expect.any(Array),
+        counts: expect.objectContaining({
+          facts: expect.any(Number),
+          decisions: expect.any(Number),
+          assumptions: expect.any(Number),
+          openLoops: expect.any(Number),
+          evidence: expect.any(Number),
+        }),
+        contract: expect.objectContaining({ conflictHandling: 'report_only' }),
       })
     );
 
@@ -295,5 +436,23 @@ describe('TaskPackage integration flow', () => {
     expect(mockState.getLastSystemPrompt()).toContain('NONGOAL_REQUEST');
     expect(mockState.getLastSystemPrompt()).toContain('constraints.technical[0]');
     expect(applyV2Res.body.data.applyReport.findings.liftedFromVersion).toBe('tpkg-0.2');
+  });
+
+  it('maps CONFLICT_RETRY_EXHAUSTED to HTTP 409 on create revision', async () => {
+    const spy = vi
+      .spyOn(TaskPackageService.prototype, 'createRevision')
+      .mockRejectedValueOnce(new Error('CONFLICT_RETRY_EXHAUSTED'));
+
+    try {
+      const res = await request(app)
+        .post('/api/v1/task-packages/33333333-3333-4333-8333-333333333333/revisions')
+        .send({ payload: { manifest: { schemaVersion: 'tpkg-0.2' } } });
+
+      expect(res.status).toBe(409);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('CONFLICT_RETRY_EXHAUSTED');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
