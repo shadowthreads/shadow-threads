@@ -309,6 +309,11 @@ model TaskPackageRevision {
   packageId String
   pkg       TaskPackage @relation("PackageRevisions", fields: [packageId], references: [id], onDelete: Cascade)
 
+  // DAG lineage pointer (no merge semantics yet)
+  parentRevisionId String?
+  parent           TaskPackageRevision?  @relation("RevisionParent", fields: [parentRevisionId], references: [id], onDelete: SetNull)
+  children         TaskPackageRevision[] @relation("RevisionParent")
+
   // ✅ 反向：被哪个 TaskPackage 作为 currentRevision 指向（Prisma 需要对称关系）
   currentFor TaskPackage? @relation("PackageCurrentRevision")
 
@@ -318,6 +323,9 @@ model TaskPackageRevision {
   // 核心：迁移包 JSON（建议结构：manifest + state + evidence + constraints + decisions + interfaces + risks）
   payload Json
 
+  // Deterministic revision identity (sha256 of canonicalized payload)
+  revisionHash String
+
   // 校验/摘要（工业字段）
   schemaVersion String @default("tpkg-0.1")
   summary       String? @db.Text
@@ -326,7 +334,10 @@ model TaskPackageRevision {
 
   // 幂等/并发：同一个 package 的同一个 rev 只能有一条
   @@unique([packageId, rev])
+  @@unique([packageId, revisionHash])
   @@index([packageId, createdAt])
+  @@index([parentRevisionId])
+  @@index([revisionHash])
 }
 
 enum TaskPackageStatus {
