@@ -12,6 +12,11 @@ import { applyDelta } from '../algebra/stateTransition/applyDelta';
 import { detectConflicts as detectTransitionConflicts } from '../algebra/stateTransition/detectConflicts';
 import type { TransitionConflict, TransitionFinding, TransitionMode, TransitionPerDomainCounts } from '../algebra/stateTransition/types';
 import { computeRevisionDelta, revisionToSemanticState, summarizeDelta, type RevisionLike } from './task-package-revision-delta';
+<<<<<<< HEAD
+=======
+import { applyRevisionNetDelta } from './revision-apply-net-delta.service';
+import { parseLLMDelta } from './llm-delta-parser';
+>>>>>>> dddf1ad (feat(phase-3E): complete revision lineage + net-delta + llm delta mode (deterministic))
 
 export type CreatePackageFromSnapshotInput = {
   title?: string;
@@ -35,7 +40,16 @@ export type ApplyPackageInput = {
 };
 
 type ApplyExecutionOptions = {
+<<<<<<< HEAD
   llmMode?: 'legacy' | 'skip';
+=======
+  llmMode?: 'legacy' | 'skip' | 'delta';
+  revisionNetDelta?: {
+    fromRevisionId: string;
+    toRevisionId: string;
+    mode?: TransitionMode;
+  };
+>>>>>>> dddf1ad (feat(phase-3E): complete revision lineage + net-delta + llm delta mode (deterministic))
 };
 
 export type CreateRevisionInput = {
@@ -72,6 +86,26 @@ type ApplyReportV2 = {
     stateHashBefore: string;
     stateHashAfter: string;
   };
+<<<<<<< HEAD
+=======
+  revisionNetDelta?: {
+    fromRevisionId: string;
+    toRevisionId: string;
+    mode: TransitionMode;
+    deltaSummary: ReturnType<typeof summarizeDelta>;
+    stateHashBefore: string;
+    stateHashAfter: string;
+    conflictsCount: number;
+  };
+  llmDelta?: {
+    mode: 'delta';
+    deltaSummary: ReturnType<typeof summarizeDelta>;
+    conflicts: TransitionConflict[];
+    postApplyConflicts: TransitionConflict[];
+    stateHashBefore: string;
+    stateHashAfter: string;
+  };
+>>>>>>> dddf1ad (feat(phase-3E): complete revision lineage + net-delta + llm delta mode (deterministic))
 };
 
 const TRANSITION_DOMAIN_ORDER: DomainName[] = ['facts', 'decisions', 'constraints', 'risks', 'assumptions'];
@@ -618,12 +652,22 @@ export class TaskPackageService {
       const targetPayload = (input.payload ?? currentPayload) as any;
       const mode = (input.mode || 'bootstrap') as ApplyMode;
       const llmMode = opts?.llmMode ?? 'legacy';
+<<<<<<< HEAD
       const transitionMode: TransitionMode = 'best_effort';
+=======
+      const revisionNetDeltaOptions = opts?.revisionNetDelta;
+      const transitionMode: TransitionMode = revisionNetDeltaOptions?.mode ?? 'best_effort';
+>>>>>>> dddf1ad (feat(phase-3E): complete revision lineage + net-delta + llm delta mode (deterministic))
 
       const baseRevision: RevisionLike = {
         payload: currentPayload,
         schemaVersion: pkg.currentRevision.schemaVersion,
+<<<<<<< HEAD
         revisionHash: typeof pkg.currentRevision.revisionHash === 'string' ? pkg.currentRevision.revisionHash : undefined,
+=======
+        revisionHash:
+          typeof pkg.currentRevision.revisionHash === 'string' ? pkg.currentRevision.revisionHash : undefined,
+>>>>>>> dddf1ad (feat(phase-3E): complete revision lineage + net-delta + llm delta mode (deterministic))
       };
       const targetRevision: RevisionLike = {
         payload: targetPayload,
@@ -631,10 +675,49 @@ export class TaskPackageService {
         revisionHash: typeof targetPayload?.revisionHash === 'string' ? targetPayload.revisionHash : undefined,
       };
 
+<<<<<<< HEAD
       const baseState = revisionToSemanticState(baseRevision);
       const delta = computeRevisionDelta(baseRevision, targetRevision);
       const deltaSummary = summarizeDelta(delta);
       const transitionBase = applyDelta(baseState, delta, { mode: transitionMode });
+=======
+      let transitionBase: ReturnType<typeof applyDelta>;
+      let deltaSummary: ReturnType<typeof summarizeDelta>;
+      let stateHashBefore: string;
+      let stateHashAfter: string;
+      let revisionNetDeltaReport: ApplyReportV2['revisionNetDelta'];
+
+      if (revisionNetDeltaOptions) {
+        const netDelta = await applyRevisionNetDelta({
+          taskPackageId: packageId,
+          fromRevisionId: revisionNetDeltaOptions.fromRevisionId,
+          toRevisionId: revisionNetDeltaOptions.toRevisionId,
+          mode: transitionMode,
+        });
+
+        transitionBase = netDelta.transition;
+        deltaSummary = netDelta.deltaSummary;
+        stateHashBefore = netDelta.stateHashBefore;
+        stateHashAfter = netDelta.stateHashAfter;
+        revisionNetDeltaReport = {
+          fromRevisionId: revisionNetDeltaOptions.fromRevisionId,
+          toRevisionId: revisionNetDeltaOptions.toRevisionId,
+          mode: transitionMode,
+          deltaSummary,
+          stateHashBefore,
+          stateHashAfter,
+          conflictsCount: transitionBase.conflicts.length,
+        };
+      } else {
+        const baseState = revisionToSemanticState(baseRevision);
+        const delta = computeRevisionDelta(baseRevision, targetRevision);
+        deltaSummary = summarizeDelta(delta);
+        transitionBase = applyDelta(baseState, delta, { mode: transitionMode });
+        stateHashBefore = stableHash(baseState);
+        stateHashAfter = stableHash(transitionBase.nextState);
+      }
+
+>>>>>>> dddf1ad (feat(phase-3E): complete revision lineage + net-delta + llm delta mode (deterministic))
       const transitionConflicts = [...transitionBase.conflicts].sort(sortTransitionConflict);
       const postApplyConflicts = detectTransitionConflicts(transitionBase.nextState).sort(sortTransitionConflict);
       const transitionFindings = mergeTransitionFindings(transitionBase.findings, postApplyConflicts);
@@ -646,8 +729,13 @@ export class TaskPackageService {
         conflicts: transitionConflicts,
         postApplyConflicts,
         findings: transitionFindings,
+<<<<<<< HEAD
         stateHashBefore: stableHash(baseState),
         stateHashAfter: stableHash(transitionBase.nextState),
+=======
+        stateHashBefore,
+        stateHashAfter,
+>>>>>>> dddf1ad (feat(phase-3E): complete revision lineage + net-delta + llm delta mode (deterministic))
       };
 
       const { normalized, findings } = normalizeTaskPackagePayload(targetPayload, {
@@ -655,7 +743,18 @@ export class TaskPackageService {
         sourceSnapshotId: pkg.sourceSnapshotId,
       });
       const conflicts = detectQuestionConflicts({ userQuestion: input.userQuestion, normalized, mode });
+<<<<<<< HEAD
       const applyReport = this.buildApplyReportV2(normalized, mode, findings, conflicts, transitionReport);
+=======
+      let applyReport = this.buildApplyReportV2(
+        normalized,
+        mode,
+        findings,
+        conflicts,
+        transitionReport,
+        revisionNetDeltaReport
+      );
+>>>>>>> dddf1ad (feat(phase-3E): complete revision lineage + net-delta + llm delta mode (deterministic))
       const provider: LLMProvider = input.provider || LLMProvider.OPENAI;
       const model: string = input.model || 'gpt-4o-mini';
 
@@ -679,6 +778,59 @@ export class TaskPackageService {
         revision: pkg.currentRevision.rev ?? 0,
         sourceSnapshotId: pkg.sourceSnapshotId,
       });
+<<<<<<< HEAD
+=======
+
+      if (llmMode === 'delta') {
+        const deltaSystemPrompt = this.buildApplyDeltaSystemPrompt(digestState, mode, digestFindings, conflicts, applyReport);
+        const llmResp = await this.llmService.complete({
+          messages: [
+            { role: 'system', content: deltaSystemPrompt },
+            { role: 'user', content: input.userQuestion },
+          ],
+          config: { provider, model, apiKey },
+          route: 'package_apply',
+        } as any);
+
+        const llmDelta = parseLLMDelta(llmResp.content);
+        const llmBaseState = revisionToSemanticState(baseRevision);
+        const llmTransition = applyDelta(llmBaseState, llmDelta, { mode: 'best_effort' });
+        const llmTransitionConflicts = [...llmTransition.conflicts].sort(sortTransitionConflict);
+        const llmPostApplyConflicts = detectTransitionConflicts(llmTransition.nextState).sort(sortTransitionConflict);
+        const llmDeltaReport: NonNullable<ApplyReportV2['llmDelta']> = {
+          mode: 'delta',
+          deltaSummary: summarizeDelta(llmDelta),
+          conflicts: llmTransitionConflicts,
+          postApplyConflicts: llmPostApplyConflicts,
+          stateHashBefore: stableHash(llmBaseState),
+          stateHashAfter: stableHash(llmTransition.nextState),
+        };
+
+        applyReport = this.buildApplyReportV2(
+          normalized,
+          mode,
+          findings,
+          conflicts,
+          transitionReport,
+          revisionNetDeltaReport,
+          llmDeltaReport
+        );
+
+        return {
+          ok: true,
+          data: {
+            packageId: pkg.id,
+            revisionId: pkg.currentRevision.id,
+            revisionRev: pkg.currentRevision.rev,
+            provider,
+            model,
+            assistantReply: { content: '' },
+            applyReport,
+          },
+        };
+      }
+
+>>>>>>> dddf1ad (feat(phase-3E): complete revision lineage + net-delta + llm delta mode (deterministic))
       const systemPrompt = this.buildApplySystemPromptV2(digestState, mode, digestFindings, conflicts, applyReport);
 
       const llmResp = await this.llmService.complete({
@@ -724,7 +876,13 @@ export class TaskPackageService {
     mode: ApplyMode,
     findings: NormalizeFindings,
     conflicts: Conflict[],
+<<<<<<< HEAD
     transition: NonNullable<ApplyReportV2['transition']>
+=======
+    transition: NonNullable<ApplyReportV2['transition']>,
+    revisionNetDelta?: ApplyReportV2['revisionNetDelta'],
+    llmDelta?: ApplyReportV2['llmDelta']
+>>>>>>> dddf1ad (feat(phase-3E): complete revision lineage + net-delta + llm delta mode (deterministic))
   ): ApplyReportV2 {
     const counts = {
       facts: normalized.state.facts.length,
@@ -742,6 +900,11 @@ export class TaskPackageService {
       counts,
       contract: { conflictHandling: 'report_only' },
       transition,
+<<<<<<< HEAD
+=======
+      ...(revisionNetDelta ? { revisionNetDelta } : {}),
+      ...(llmDelta ? { llmDelta } : {}),
+>>>>>>> dddf1ad (feat(phase-3E): complete revision lineage + net-delta + llm delta mode (deterministic))
     };
   }
 
@@ -784,6 +947,26 @@ export class TaskPackageService {
       digest,
       ``,
       `Reply in the user's language.`,
+    ].join('\n');
+  }
+
+  private buildApplyDeltaSystemPrompt(
+    normalized: NormalizedTaskPackage,
+    mode: ApplyMode,
+    findings: NormalizeFindings,
+    conflicts: Conflict[],
+    applyReport: ApplyReportV2
+  ) {
+    const digest = this.buildPackageDigest(normalized, findings, conflicts, applyReport);
+
+    return [
+      'You must return ONLY valid JSON for schemaVersion "sdiff-0.1".',
+      'No markdown, no prose, no code fences.',
+      'Allowed fieldChange operations: set, unset, append, remove.',
+      'Use deterministic keys and include all required domain arrays.',
+      `Apply mode context: ${mode}.`,
+      '',
+      digest,
     ].join('\n');
   }
 
