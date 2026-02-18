@@ -35,6 +35,8 @@ function normalizeServiceCode(code: unknown):
   | 'NO_REVISION'
   | 'INVALID_INPUT'
   | 'CONFLICT_RETRY_EXHAUSTED'
+  | 'E_INVALID_INPUT'
+  | 'E_LLM_DELTA_CONFLICT'
   | 'UNKNOWN' {
   if (typeof code !== 'string') return 'UNKNOWN';
   if (
@@ -42,11 +44,19 @@ function normalizeServiceCode(code: unknown):
     code === 'FORBIDDEN' ||
     code === 'NO_REVISION' ||
     code === 'INVALID_INPUT' ||
-    code === 'CONFLICT_RETRY_EXHAUSTED'
+    code === 'CONFLICT_RETRY_EXHAUSTED' ||
+    code === 'E_INVALID_INPUT' ||
+    code === 'E_LLM_DELTA_CONFLICT'
   ) {
     return code;
   }
   return 'UNKNOWN';
+}
+
+function errorMessageForCode(code: ReturnType<typeof normalizeServiceCode>): string {
+  if (code === 'E_INVALID_INPUT') return "llmDeltaMode must be 'best_effort' or 'strict'";
+  if (code === 'E_LLM_DELTA_CONFLICT') return 'LLM delta contains conflicts';
+  return code;
 }
 
 function sendServiceError(res: Response, code: unknown): void {
@@ -56,7 +66,7 @@ function sendServiceError(res: Response, code: unknown): void {
       ? 404
       : normalized === 'FORBIDDEN'
       ? 403
-      : normalized === 'CONFLICT_RETRY_EXHAUSTED'
+      : normalized === 'CONFLICT_RETRY_EXHAUSTED' || normalized === 'E_LLM_DELTA_CONFLICT'
       ? 409
       : 400;
 
@@ -64,7 +74,7 @@ function sendServiceError(res: Response, code: unknown): void {
     success: false,
     error: {
       code: normalized,
-      message: normalized,
+      message: errorMessageForCode(normalized),
     },
   });
 }
@@ -220,6 +230,9 @@ const applySchema = z.object({
   mode: z.enum(['bootstrap', 'constrain', 'review']).optional(),
   provider: z.nativeEnum(LLMProvider).optional(),
   model: z.string().optional(),
+  llmMode: z.enum(['legacy', 'delta']).optional(),
+  llmDeltaMode: z.string().optional(),
+  llmDelta: z.unknown().optional(),
 });
 type ApplyBody = z.infer<typeof applySchema>;
 
@@ -230,15 +243,34 @@ router.post(
   asyncHandler(async (req, res) => {
     const userId = req.userId!;
     const packageId = paramToString((req.params as { id?: string | string[] }).id);
-    const { userQuestion, mode, provider, model } = req.body as ApplyBody;
+    const { userQuestion, mode, provider, model, llmMode, llmDeltaMode, llmDelta } = req.body as ApplyBody;
 
     try {
-      const result = await svc.applyPackage(userId, packageId, {
-        userQuestion,
-        mode,
-        provider,
-        model,
-      });
+      if (llmDeltaMode !== undefined && llmDeltaMode !== 'best_effort' && llmDeltaMode !== 'strict') {
+        sendServiceError(res, 'E_INVALID_INPUT');
+        return;
+      }
+
+      const applyOptions =
+        llmMode === 'delta'
+          ? {
+              llmMode: 'delta' as const,
+              llmDeltaMode: (llmDeltaMode as 'best_effort' | 'strict' | undefined) ?? 'best_effort',
+              llmDelta,
+            }
+          : undefined;
+
+      const result = await svc.applyPackage(
+        userId,
+        packageId,
+        {
+          userQuestion,
+          mode,
+          provider,
+          model,
+        },
+        applyOptions
+      );
 
       if (!result.ok) {
         sendServiceError(res, result.code);
