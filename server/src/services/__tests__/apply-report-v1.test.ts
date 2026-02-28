@@ -1,7 +1,7 @@
 ﻿import { describe, expect, it } from 'vitest';
 
 import { stableHash } from '../../algebra/semanticDiff/key';
-import { buildApplyReportV1 } from '../apply-report-v1';
+import { buildApplyReportV1, type BuildApplyReportV1Input } from '../apply-report-v1';
 
 describe('buildApplyReportV1', () => {
   it('builds legacy minimal report deterministically', () => {
@@ -125,46 +125,48 @@ describe('buildApplyReportV1', () => {
   });
 
   it('produces stable output for permuted conflict input', () => {
-    const baseInput = {
-      llmMode: 'legacy' as const,
-      transitionMode: 'best_effort' as const,
-      transition: {
-        deltaSummary: {
-          modifiedDomains: ['constraints', 'facts'],
-          counts: {
-            facts: { added: 1, removed: 0, modified: 0 },
-            decisions: { added: 0, removed: 0, modified: 0 },
-            constraints: { added: 0, removed: 1, modified: 0 },
-            risks: { added: 0, removed: 0, modified: 0 },
-            assumptions: { added: 0, removed: 0, modified: 0 },
-          },
-          hasCollisions: true,
-          assumptionsDerived: true,
+    const transition = {
+      deltaSummary: {
+        modifiedDomains: ['constraints', 'facts'],
+        counts: {
+          facts: { added: 1, removed: 0, modified: 0 },
+          decisions: { added: 0, removed: 0, modified: 0 },
+          constraints: { added: 0, removed: 1, modified: 0 },
+          risks: { added: 0, removed: 0, modified: 0 },
+          assumptions: { added: 0, removed: 0, modified: 0 },
         },
-        conflicts: [
-          { domain: 'constraints', code: 'B', key: '2', path: 'p2', message: 'm2' },
-          { domain: 'facts', code: 'A', key: '1', path: 'p1', message: 'm1' },
-        ],
-        postApplyConflicts: [
-          { domain: 'risks', code: 'C', key: '3', path: 'p3', message: 'm3' },
-        ],
-        findings: [
-          { code: 'B', message: 'bbb', count: 2, domains: ['constraints', 'facts'] },
-          { code: 'A', message: 'aaa', count: 1, domains: ['assumptions'] },
-        ],
+        hasCollisions: true,
+        assumptionsDerived: true,
       },
-    };
+      conflicts: [
+        { domain: 'constraints', code: 'B', key: '2', path: 'p2', message: 'm2' },
+        { domain: 'facts', code: 'A', key: '1', path: 'p1', message: 'm1' },
+      ],
+      postApplyConflicts: [{ domain: 'risks', code: 'C', key: '3', path: 'p3', message: 'm3' }],
+      findings: [
+        { code: 'B', message: 'bbb', count: 2, domains: ['constraints', 'facts'] },
+        { code: 'A', message: 'aaa', count: 1, domains: ['assumptions'] },
+      ],
+    } satisfies NonNullable<BuildApplyReportV1Input['transition']>;
+
+    const baseInput = {
+      llmMode: 'legacy',
+      transitionMode: 'best_effort',
+      transition,
+    } satisfies BuildApplyReportV1Input;
 
     const first = buildApplyReportV1(baseInput);
     const second = buildApplyReportV1({
       ...baseInput,
       transition: {
-        ...baseInput.transition,
-        conflicts: [...baseInput.transition.conflicts].reverse(),
-        findings: [...baseInput.transition.findings].reverse(),
+        ...transition,
+        conflicts: [...transition.conflicts].reverse(),
+        findings: [...transition.findings].reverse(),
       },
     });
 
     expect(stableHash(first)).toBe(stableHash(second));
   });
 });
+
+

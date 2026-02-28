@@ -1,0 +1,56 @@
+{
+  "taskId": "t1_multi_domain_edit_small",
+  "category": "T1",
+  "description": "Small multi-domain edit touching facts, decisions, constraints, and risks.",
+  "baseState": {
+    "facts": [
+      { "id": "f_api_version", "subject": "api", "predicate": "version", "value": "v1", "confidence": 0.9 },
+      { "id": "f_mobile_share", "subject": "traffic", "predicate": "mobile-share", "value": "40%", "confidence": 0.7 }
+    ],
+    "decisions": [
+      { "id": "d_api_version", "question": "Target API version", "answer": "v1", "rationale": "compatibility", "confidence": 0.8 },
+      { "id": "d_flagging", "question": "Feature flag provider", "answer": "internal", "rationale": "low cost", "confidence": 0.6 }
+    ],
+    "constraints": [
+      { "id": "c_mobile", "scope": "technical", "rule": "Mobile clients must remain compatible", "strength": "high" },
+      { "id": "c_budget_cap", "scope": "policy", "rule": "Monthly infra increase under 5%", "strength": "medium" }
+    ],
+    "risks": [
+      { "id": "r_mobile_break", "title": "Mobile compatibility break", "probability": "medium", "impact": "high", "mitigation": "contract tests" },
+      { "id": "r_flag_latency", "title": "Flag fetch latency", "probability": "low", "impact": "medium", "mitigation": "cache local" }
+    ],
+    "assumptions": [
+      { "id": "a_mobile_sdk", "statement": "Mobile SDK upgrade planned this quarter", "confidence": 0.6 },
+      { "id": "a_flag_qps", "statement": "Flag evaluation QPS stays under limit", "confidence": 0.7 }
+    ]
+  },
+  "targetState": {
+    "facts": [
+      { "id": "f_api_version", "subject": "api", "predicate": "version", "value": "v2", "confidence": 0.88 },
+      { "id": "f_mobile_share", "subject": "traffic", "predicate": "mobile-share", "value": "42%", "confidence": 0.74 }
+    ],
+    "decisions": [
+      { "id": "d_api_version", "question": "Target API version", "answer": "v2", "rationale": "new capabilities", "confidence": 0.83 },
+      { "id": "d_flagging", "question": "Feature flag provider", "answer": "internal", "rationale": "low cost", "confidence": 0.6 }
+    ],
+    "constraints": [
+      { "id": "c_mobile", "scope": "technical", "rule": "Mobile clients must remain compatible", "strength": "high" },
+      { "id": "c_budget_cap", "scope": "policy", "rule": "Monthly infra increase under 8%", "strength": "medium" }
+    ],
+    "risks": [
+      { "id": "r_mobile_break", "title": "Mobile compatibility break", "probability": "low", "impact": "medium", "mitigation": "contract tests + canary" },
+      { "id": "r_flag_latency", "title": "Flag fetch latency", "probability": "low", "impact": "medium", "mitigation": "cache local" }
+    ],
+    "assumptions": [
+      { "id": "a_mobile_sdk", "statement": "Mobile SDK upgrade planned this quarter", "confidence": 0.6 },
+      { "id": "a_flag_qps", "statement": "Flag evaluation QPS stays under limit", "confidence": 0.7 }
+    ]
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": true,
+    "maxDistanceCountsSum": 0,
+    "requiredDomainsModified": ["facts", "decisions", "constraints", "risks"]
+  },
+  "runConfig": { "repetitions": 15 }
+}

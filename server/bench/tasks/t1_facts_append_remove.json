@@ -1,0 +1,59 @@
+{
+  "taskId": "t1_facts_append_remove",
+  "category": "T1",
+  "description": "Append and remove facts while preserving other domains.",
+  "baseState": {
+    "facts": [
+      { "id": "f_env_dev", "subject": "env", "predicate": "dev", "value": "stable", "confidence": 0.9 },
+      { "id": "f_env_stage", "subject": "env", "predicate": "stage", "value": "lagging", "confidence": 0.6 },
+      { "id": "f_env_prod", "subject": "env", "predicate": "prod", "value": "stable", "confidence": 0.92 }
+    ],
+    "decisions": [
+      { "id": "d_db", "question": "Primary database", "answer": "postgres", "rationale": "existing ops maturity", "confidence": 0.88 },
+      { "id": "d_queue", "question": "Queue backend", "answer": "redis-stream", "rationale": "already deployed", "confidence": 0.7 }
+    ],
+    "constraints": [
+      { "id": "c_sla", "scope": "technical", "rule": "SLA remains 99.9", "strength": "high" },
+      { "id": "c_cost", "scope": "process", "rule": "No infra cost increase above 10 percent", "strength": "medium" }
+    ],
+    "risks": [
+      { "id": "r_data", "title": "Data skew", "probability": "medium", "impact": "medium", "mitigation": "sampling checks" },
+      { "id": "r_queue", "title": "Queue backlog", "probability": "low", "impact": "high", "mitigation": "rate limits" }
+    ],
+    "assumptions": [
+      { "id": "a_monitoring", "statement": "Monitoring stack remains healthy", "confidence": 0.8 },
+      { "id": "a_alerting", "statement": "Alert routing remains on-call ready", "confidence": 0.82 }
+    ]
+  },
+  "targetState": {
+    "facts": [
+      { "id": "f_env_dev", "subject": "env", "predicate": "dev", "value": "stable", "confidence": 0.9 },
+      { "id": "f_env_prod", "subject": "env", "predicate": "prod", "value": "stable", "confidence": 0.92 },
+      { "id": "f_env_perf", "subject": "env", "predicate": "perf", "value": "new cluster", "confidence": 0.75 }
+    ],
+    "decisions": [
+      { "id": "d_db", "question": "Primary database", "answer": "postgres", "rationale": "existing ops maturity", "confidence": 0.88 },
+      { "id": "d_queue", "question": "Queue backend", "answer": "redis-stream", "rationale": "already deployed", "confidence": 0.7 }
+    ],
+    "constraints": [
+      { "id": "c_sla", "scope": "technical", "rule": "SLA remains 99.9", "strength": "high" },
+      { "id": "c_cost", "scope": "process", "rule": "No infra cost increase above 10 percent", "strength": "medium" }
+    ],
+    "risks": [
+      { "id": "r_data", "title": "Data skew", "probability": "medium", "impact": "medium", "mitigation": "sampling checks" },
+      { "id": "r_queue", "title": "Queue backlog", "probability": "low", "impact": "high", "mitigation": "rate limits" }
+    ],
+    "assumptions": [
+      { "id": "a_monitoring", "statement": "Monitoring stack remains healthy", "confidence": 0.8 },
+      { "id": "a_alerting", "statement": "Alert routing remains on-call ready", "confidence": 0.82 }
+    ]
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": true,
+    "maxDistanceCountsSum": 0,
+    "requiredDomainsModified": ["facts"],
+    "domainMustNotChange": ["decisions", "constraints", "risks", "assumptions"]
+  },
+  "runConfig": { "repetitions": 15 }
+}

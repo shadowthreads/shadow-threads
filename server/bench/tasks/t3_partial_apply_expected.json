@@ -1,0 +1,314 @@
+{
+  "taskId": "t3_partial_apply_expected",
+  "category": "T3",
+  "description": "Partial apply expected: strict keeps non-conflicting domains while rolling back conflicting domain.",
+  "baseState": {
+    "facts": [
+      {
+        "id": "f_scope",
+        "subject": "project",
+        "predicate": "scope",
+        "value": "phase1",
+        "confidence": 0.9
+      },
+      {
+        "id": "f_budget",
+        "subject": "project",
+        "predicate": "budget",
+        "value": "100",
+        "confidence": 0.8
+      }
+    ],
+    "decisions": [
+      {
+        "id": "d_strategy",
+        "question": "Delivery strategy",
+        "answer": "incremental",
+        "rationale": "low risk",
+        "confidence": 0.8
+      }
+    ],
+    "constraints": [
+      {
+        "id": "c_budget",
+        "scope": "policy",
+        "rule": "Budget must stay under 120",
+        "strength": "high"
+      }
+    ],
+    "risks": [
+      {
+        "id": "r_overrun",
+        "title": "Cost overrun",
+        "probability": "medium",
+        "impact": "high",
+        "mitigation": "weekly review"
+      }
+    ],
+    "assumptions": [
+      {
+        "id": "a_team",
+        "statement": "Team capacity remains stable",
+        "confidence": 0.7
+      }
+    ]
+  },
+  "targetState": {
+    "facts": [
+      {
+        "id": "f_scope",
+        "subject": "project",
+        "predicate": "scope",
+        "value": "phase1",
+        "confidence": 0.9
+      },
+      {
+        "id": "f_budget",
+        "subject": "project",
+        "predicate": "budget",
+        "value": "100",
+        "confidence": 0.8
+      },
+      {
+        "id": "f_latency_budget",
+        "subject": "project",
+        "predicate": "latency-budget",
+        "value": "200ms",
+        "confidence": 0.74
+      }
+    ],
+    "decisions": [
+      {
+        "id": "d_strategy",
+        "question": "Delivery strategy",
+        "answer": "incremental",
+        "rationale": "low risk",
+        "confidence": 0.8
+      }
+    ],
+    "constraints": [
+      {
+        "id": "c_budget",
+        "scope": "policy",
+        "rule": "Budget must stay under 110",
+        "strength": "high"
+      }
+    ],
+    "risks": [
+      {
+        "id": "r_overrun",
+        "title": "Cost overrun",
+        "probability": "medium",
+        "impact": "high",
+        "mitigation": "weekly review"
+      }
+    ],
+    "assumptions": [
+      {
+        "id": "a_team",
+        "statement": "Team capacity remains stable",
+        "confidence": 0.75
+      }
+    ]
+  },
+  "coreStubDelta": {
+    "facts": {
+      "added": [
+        {
+          "key": "",
+          "unit": {
+            "id": "f_budget",
+            "subject": "project",
+            "predicate": "budget",
+            "value": "100",
+            "confidence": 0.8
+          }
+        },
+        {
+          "key": "",
+          "unit": {
+            "id": "f_latency_budget",
+            "subject": "project",
+            "predicate": "latency-budget",
+            "value": "200ms",
+            "confidence": 0.74
+          }
+        }
+      ],
+      "removed": [],
+      "modified": []
+    },
+    "decisions": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "constraints": {
+      "added": [],
+      "removed": [],
+      "modified": [
+        {
+          "key": "",
+          "before": {
+            "id": "c_budget",
+            "scope": "policy",
+            "rule": "Budget must stay under 120",
+            "strength": "high"
+          },
+          "after": {
+            "id": "c_budget",
+            "scope": "policy",
+            "rule": "Budget must stay under 110",
+            "strength": "high"
+          },
+          "changes": [
+            {
+              "path": "rule",
+              "op": "set",
+              "before": "Budget must stay under 120",
+              "after": "Budget must stay under 110"
+            }
+          ]
+        }
+      ]
+    },
+    "risks": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "assumptions": {
+      "added": [],
+      "removed": [],
+      "modified": [
+        {
+          "key": "",
+          "before": {
+            "id": "a_team",
+            "statement": "Team capacity remains stable",
+            "confidence": 0.7
+          },
+          "after": {
+            "id": "a_team",
+            "statement": "Team capacity remains stable",
+            "confidence": 0.75
+          },
+          "changes": [
+            {
+              "path": "confidence",
+              "op": "set",
+              "before": 0.7,
+              "after": 0.75
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "llmStubDelta": {
+    "facts": {
+      "added": [
+        {
+          "key": "",
+          "unit": {
+            "id": "f_budget",
+            "subject": "project",
+            "predicate": "budget",
+            "value": "100",
+            "confidence": 0.8
+          }
+        },
+        {
+          "key": "",
+          "unit": {
+            "id": "f_latency_budget",
+            "subject": "project",
+            "predicate": "latency-budget",
+            "value": "200ms",
+            "confidence": 0.74
+          }
+        }
+      ],
+      "removed": [],
+      "modified": []
+    },
+    "decisions": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "constraints": {
+      "added": [],
+      "removed": [],
+      "modified": [
+        {
+          "key": "",
+          "before": {
+            "id": "c_budget",
+            "scope": "policy",
+            "rule": "Budget must stay under 120",
+            "strength": "high"
+          },
+          "after": {
+            "id": "c_budget",
+            "scope": "policy",
+            "rule": "Budget must stay under 110",
+            "strength": "high"
+          },
+          "changes": [
+            {
+              "path": "rule",
+              "op": "set",
+              "before": "Budget must stay under 120",
+              "after": "Budget must stay under 110"
+            }
+          ]
+        }
+      ]
+    },
+    "risks": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "assumptions": {
+      "added": [],
+      "removed": [],
+      "modified": [
+        {
+          "key": "",
+          "before": {
+            "id": "a_team",
+            "statement": "Team capacity remains stable",
+            "confidence": 0.7
+          },
+          "after": {
+            "id": "a_team",
+            "statement": "Team capacity remains stable",
+            "confidence": 0.75
+          },
+          "changes": [
+            {
+              "path": "confidence",
+              "op": "set",
+              "before": 0.7,
+              "after": 0.75
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": false,
+    "requiredDomainsModified": [
+      "facts",
+      "constraints",
+      "assumptions"
+    ]
+  },
+  "runConfig": {
+    "repetitions": 15
+  }
+}

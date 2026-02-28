@@ -1,0 +1,319 @@
+{
+  "taskId": "t3_multi_conflict_mixed",
+  "category": "T3",
+  "description": "Mixed multi-domain delta with multiple conflicts and valid operations.",
+  "baseState": {
+    "facts": [
+      {
+        "id": "f_scope",
+        "subject": "project",
+        "predicate": "scope",
+        "value": "phase1",
+        "confidence": 0.9
+      },
+      {
+        "id": "f_budget",
+        "subject": "project",
+        "predicate": "budget",
+        "value": "100",
+        "confidence": 0.8
+      }
+    ],
+    "decisions": [
+      {
+        "id": "d_strategy",
+        "question": "Delivery strategy",
+        "answer": "incremental",
+        "rationale": "low risk",
+        "confidence": 0.8
+      }
+    ],
+    "constraints": [
+      {
+        "id": "c_budget",
+        "scope": "policy",
+        "rule": "Budget must stay under 120",
+        "strength": "high"
+      }
+    ],
+    "risks": [
+      {
+        "id": "r_overrun",
+        "title": "Cost overrun",
+        "probability": "medium",
+        "impact": "high",
+        "mitigation": "weekly review"
+      }
+    ],
+    "assumptions": [
+      {
+        "id": "a_team",
+        "statement": "Team capacity remains stable",
+        "confidence": 0.7
+      }
+    ]
+  },
+  "targetState": {
+    "facts": [
+      {
+        "id": "f_scope",
+        "subject": "project",
+        "predicate": "scope",
+        "value": "phase1",
+        "confidence": 0.9
+      },
+      {
+        "id": "f_budget",
+        "subject": "project",
+        "predicate": "budget",
+        "value": "100",
+        "confidence": 0.8
+      },
+      {
+        "id": "f_audit",
+        "subject": "project",
+        "predicate": "audit",
+        "value": "enabled",
+        "confidence": 0.76
+      }
+    ],
+    "decisions": [
+      {
+        "id": "d_strategy",
+        "question": "Delivery strategy",
+        "answer": "hybrid",
+        "rationale": "mixed constraints",
+        "confidence": 0.81
+      }
+    ],
+    "constraints": [
+      {
+        "id": "c_budget",
+        "scope": "policy",
+        "rule": "Budget must stay under 120",
+        "strength": "high"
+      }
+    ],
+    "risks": [
+      {
+        "id": "r_overrun",
+        "title": "Cost overrun",
+        "probability": "medium",
+        "impact": "high",
+        "mitigation": "weekly review"
+      }
+    ],
+    "assumptions": [
+      {
+        "id": "a_team",
+        "statement": "Team capacity remains stable",
+        "confidence": 0.7
+      }
+    ]
+  },
+  "coreStubDelta": {
+    "facts": {
+      "added": [
+        {
+          "key": "",
+          "unit": {
+            "id": "f_scope",
+            "subject": "project",
+            "predicate": "scope",
+            "value": "phase1",
+            "confidence": 0.9
+          }
+        },
+        {
+          "key": "",
+          "unit": {
+            "id": "f_audit",
+            "subject": "project",
+            "predicate": "audit",
+            "value": "enabled",
+            "confidence": 0.76
+          }
+        }
+      ],
+      "removed": [],
+      "modified": []
+    },
+    "decisions": {
+      "added": [],
+      "removed": [],
+      "modified": [
+        {
+          "key": "",
+          "before": {
+            "id": "d_strategy",
+            "question": "Delivery strategy",
+            "answer": "incremental",
+            "rationale": "low risk",
+            "confidence": 0.8
+          },
+          "after": {
+            "id": "d_strategy",
+            "question": "Delivery strategy",
+            "answer": "hybrid",
+            "rationale": "mixed constraints",
+            "confidence": 0.81
+          },
+          "changes": [
+            {
+              "path": "answer",
+              "op": "set",
+              "before": "incremental",
+              "after": "hybrid"
+            },
+            {
+              "path": "rationale",
+              "op": "set",
+              "before": "low risk",
+              "after": "mixed constraints"
+            },
+            {
+              "path": "confidence",
+              "op": "set",
+              "before": 0.8,
+              "after": 0.81
+            }
+          ]
+        }
+      ]
+    },
+    "constraints": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "risks": {
+      "added": [],
+      "removed": [
+        {
+          "key": "",
+          "unit": {
+            "id": "r_missing",
+            "title": "Missing risk",
+            "probability": "low",
+            "impact": "low",
+            "mitigation": "none"
+          }
+        }
+      ],
+      "modified": []
+    },
+    "assumptions": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    }
+  },
+  "llmStubDelta": {
+    "facts": {
+      "added": [
+        {
+          "key": "",
+          "unit": {
+            "id": "f_scope",
+            "subject": "project",
+            "predicate": "scope",
+            "value": "phase1",
+            "confidence": 0.9
+          }
+        },
+        {
+          "key": "",
+          "unit": {
+            "id": "f_audit",
+            "subject": "project",
+            "predicate": "audit",
+            "value": "enabled",
+            "confidence": 0.76
+          }
+        }
+      ],
+      "removed": [],
+      "modified": []
+    },
+    "decisions": {
+      "added": [],
+      "removed": [],
+      "modified": [
+        {
+          "key": "",
+          "before": {
+            "id": "d_strategy",
+            "question": "Delivery strategy",
+            "answer": "incremental",
+            "rationale": "low risk",
+            "confidence": 0.8
+          },
+          "after": {
+            "id": "d_strategy",
+            "question": "Delivery strategy",
+            "answer": "hybrid",
+            "rationale": "mixed constraints",
+            "confidence": 0.81
+          },
+          "changes": [
+            {
+              "path": "answer",
+              "op": "set",
+              "before": "incremental",
+              "after": "hybrid"
+            },
+            {
+              "path": "rationale",
+              "op": "set",
+              "before": "low risk",
+              "after": "mixed constraints"
+            },
+            {
+              "path": "confidence",
+              "op": "set",
+              "before": 0.8,
+              "after": 0.81
+            }
+          ]
+        }
+      ]
+    },
+    "constraints": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "risks": {
+      "added": [],
+      "removed": [
+        {
+          "key": "",
+          "unit": {
+            "id": "r_missing",
+            "title": "Missing risk",
+            "probability": "low",
+            "impact": "low",
+            "mitigation": "none"
+          }
+        }
+      ],
+      "modified": []
+    },
+    "assumptions": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    }
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": false,
+    "requiredDomainsModified": [
+      "facts",
+      "decisions"
+    ]
+  },
+  "runConfig": {
+    "repetitions": 15
+  }
+}

@@ -13,7 +13,22 @@
     "prisma:studio": "prisma studio --schema prisma/schema.prisma",
     "prisma:seed": "tsx prisma/seed.ts",
     "lint": "eslint src --ext .ts",
-    "test": "vitest"
+    "test": "vitest",
+    "bench:run": "tsx src/bench/runner.ts",
+    "bench:eval": "tsx src/bench/evaluator.ts",
+    "bench": "npm run bench:validate && npm run bench:run && npm run bench:eval",
+    "bench:validate": "tsx src/bench/validate-fixtures.ts",
+    "bench:validate:node": "node src/bench/node/validate-fixtures.cjs",
+    "bench:run:node": "node src/bench/node/run-with-build.cjs",
+    "bench:eval:node": "node src/bench/node/evaluator.cjs",
+    "bench:node": "npm run bench:strip-bom:node && npm run bench:validate:node && npm run bench:run:node && npm run bench:eval:node && npm run bench:stats:node && npm run bench:evidence:node && npm run bench:diagnose:node && npm run bench:gate:node",
+    "bench:strip-bom:node": "node src/bench/node/strip-bom.cjs",
+    "bench:selftest:node": "node src/bench/node/selftest.cjs",
+    "bench:stats:node": "node src/bench/node/stats.cjs",
+    "bench:eval2:node": "npm run bench:eval:node && npm run bench:stats:node",
+    "bench:evidence:node": "node src/bench/node/evidence.cjs",
+    "bench:gate:node": "node src/bench/node/gate.cjs",
+    "bench:diagnose:node": "node src/bench/node/diagnose.cjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",

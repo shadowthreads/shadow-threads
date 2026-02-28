@@ -1,0 +1,60 @@
+{
+  "taskId": "t2_long_context_summary_as_facts",
+  "category": "T2",
+  "description": "Simulate compressed long context represented as structured facts.",
+  "baseState": {
+    "facts": [
+      { "id": "f_ctx_1", "subject": "context", "predicate": "summary", "value": "phase-1 interviews complete", "confidence": 0.8 },
+      { "id": "f_ctx_2", "subject": "context", "predicate": "summary", "value": "customer segment A dominant", "confidence": 0.77 },
+      { "id": "f_ctx_3", "subject": "context", "predicate": "summary", "value": "pricing sensitivity observed", "confidence": 0.73 }
+    ],
+    "decisions": [
+      { "id": "d_focus_segment", "question": "Primary segment", "answer": "A", "rationale": "strong signal", "confidence": 0.79 },
+      { "id": "d_price_test", "question": "Run price test?", "answer": "yes", "rationale": "validate sensitivity", "confidence": 0.68 }
+    ],
+    "constraints": [
+      { "id": "c_research_time", "scope": "process", "rule": "Complete synthesis in 10 days", "strength": "medium" },
+      { "id": "c_communication", "scope": "process", "rule": "Weekly executive readout required", "strength": "high" }
+    ],
+    "risks": [
+      { "id": "r_signal_noise", "title": "Signal noise in summaries", "probability": "medium", "impact": "medium", "mitigation": "cross-check raw notes" },
+      { "id": "r_exec_misalignment", "title": "Executive interpretation drift", "probability": "low", "impact": "high", "mitigation": "shared dashboard" }
+    ],
+    "assumptions": [
+      { "id": "a_notes_quality", "statement": "Interview notes quality is consistent", "confidence": 0.7 },
+      { "id": "a_segment_stability", "statement": "Segment behavior remains stable", "confidence": 0.66 }
+    ]
+  },
+  "targetState": {
+    "facts": [
+      { "id": "f_ctx_1", "subject": "context", "predicate": "summary", "value": "phase-1 interviews complete", "confidence": 0.8 },
+      { "id": "f_ctx_2", "subject": "context", "predicate": "summary", "value": "customer segment B growing", "confidence": 0.79 },
+      { "id": "f_ctx_3", "subject": "context", "predicate": "summary", "value": "pricing sensitivity observed", "confidence": 0.73 },
+      { "id": "f_ctx_4", "subject": "context", "predicate": "summary", "value": "support requests cluster around onboarding", "confidence": 0.71 }
+    ],
+    "decisions": [
+      { "id": "d_focus_segment", "question": "Primary segment", "answer": "B", "rationale": "latest trend reversal", "confidence": 0.77 },
+      { "id": "d_price_test", "question": "Run price test?", "answer": "yes", "rationale": "validate sensitivity", "confidence": 0.68 }
+    ],
+    "constraints": [
+      { "id": "c_research_time", "scope": "process", "rule": "Complete synthesis in 10 days", "strength": "medium" },
+      { "id": "c_communication", "scope": "process", "rule": "Weekly executive readout required", "strength": "high" }
+    ],
+    "risks": [
+      { "id": "r_signal_noise", "title": "Signal noise in summaries", "probability": "medium", "impact": "medium", "mitigation": "cross-check raw notes" },
+      { "id": "r_exec_misalignment", "title": "Executive interpretation drift", "probability": "low", "impact": "high", "mitigation": "shared dashboard" }
+    ],
+    "assumptions": [
+      { "id": "a_notes_quality", "statement": "Interview notes quality is consistent", "confidence": 0.7 },
+      { "id": "a_segment_stability", "statement": "Segment behavior remains stable", "confidence": 0.66 }
+    ]
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": true,
+    "maxDistanceCountsSum": 0,
+    "requiredDomainsModified": ["facts", "decisions"],
+    "requiredDecisionKeys": ["d_focus_segment"]
+  },
+  "runConfig": { "repetitions": 15 }
+}

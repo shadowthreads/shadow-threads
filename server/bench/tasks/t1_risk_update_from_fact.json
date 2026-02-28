@@ -1,0 +1,56 @@
+{
+  "taskId": "t1_risk_update_from_fact",
+  "category": "T1",
+  "description": "Update facts and risk profile based on telemetry.",
+  "baseState": {
+    "facts": [
+      { "id": "f_latency", "subject": "perf", "predicate": "latency", "value": "220ms", "confidence": 0.8 },
+      { "id": "f_error_rate", "subject": "perf", "predicate": "error-rate", "value": "1.8%", "confidence": 0.76 }
+    ],
+    "decisions": [
+      { "id": "d_rollout_wave", "question": "Rollout wave count", "answer": "2", "rationale": "balanced speed and safety", "confidence": 0.72 },
+      { "id": "d_guardrail", "question": "Guardrail mechanism", "answer": "auto-rollback", "rationale": "known runbook", "confidence": 0.85 }
+    ],
+    "constraints": [
+      { "id": "c_p99", "scope": "technical", "rule": "P99 latency under 500ms", "strength": "high" },
+      { "id": "c_errors", "scope": "technical", "rule": "Error rate under 2%", "strength": "high" }
+    ],
+    "risks": [
+      { "id": "r_regression", "title": "Regression risk", "probability": "high", "impact": "high", "mitigation": "feature flag" },
+      { "id": "r_support", "title": "Support load", "probability": "medium", "impact": "medium", "mitigation": "FAQ update" }
+    ],
+    "assumptions": [
+      { "id": "a_observability", "statement": "Telemetry remains complete", "confidence": 0.7 },
+      { "id": "a_oncall", "statement": "On-call rotation remains staffed", "confidence": 0.75 }
+    ]
+  },
+  "targetState": {
+    "facts": [
+      { "id": "f_latency", "subject": "perf", "predicate": "latency", "value": "180ms", "confidence": 0.88 },
+      { "id": "f_error_rate", "subject": "perf", "predicate": "error-rate", "value": "0.9%", "confidence": 0.84 }
+    ],
+    "decisions": [
+      { "id": "d_rollout_wave", "question": "Rollout wave count", "answer": "2", "rationale": "balanced speed and safety", "confidence": 0.72 },
+      { "id": "d_guardrail", "question": "Guardrail mechanism", "answer": "auto-rollback", "rationale": "known runbook", "confidence": 0.85 }
+    ],
+    "constraints": [
+      { "id": "c_p99", "scope": "technical", "rule": "P99 latency under 500ms", "strength": "high" },
+      { "id": "c_errors", "scope": "technical", "rule": "Error rate under 2%", "strength": "high" }
+    ],
+    "risks": [
+      { "id": "r_regression", "title": "Regression risk", "probability": "low", "impact": "medium", "mitigation": "feature flag" },
+      { "id": "r_support", "title": "Support load", "probability": "low", "impact": "medium", "mitigation": "FAQ update" }
+    ],
+    "assumptions": [
+      { "id": "a_observability", "statement": "Telemetry remains complete", "confidence": 0.7 },
+      { "id": "a_oncall", "statement": "On-call rotation remains staffed", "confidence": 0.75 }
+    ]
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": true,
+    "maxDistanceCountsSum": 0,
+    "requiredDomainsModified": ["facts", "risks"]
+  },
+  "runConfig": { "repetitions": 15 }
+}

@@ -1,0 +1,247 @@
+{
+  "taskId": "t3_strict_rollback_expected",
+  "category": "T3",
+  "description": "Strict rollback preserves semantic risk conflict while best_effort resolves it via valid modification.",
+  "baseState": {
+    "facts": [
+      {
+        "id": "f_scope",
+        "subject": "project",
+        "predicate": "scope",
+        "value": "phase1",
+        "confidence": 0.9
+      },
+      {
+        "id": "f_budget",
+        "subject": "project",
+        "predicate": "budget",
+        "value": "100",
+        "confidence": 0.8
+      }
+    ],
+    "decisions": [
+      {
+        "id": "d_strategy",
+        "question": "Delivery strategy",
+        "answer": "incremental",
+        "rationale": "low risk",
+        "confidence": 0.8
+      }
+    ],
+    "constraints": [
+      {
+        "id": "c_risk_threshold",
+        "scope": "risk",
+        "rule": "Risk probability must be medium or below",
+        "strength": "high",
+        "maxProbability": "medium"
+      }
+    ],
+    "risks": [
+      {
+        "id": "r_overrun",
+        "title": "Cost overrun",
+        "probability": "high",
+        "impact": "high",
+        "mitigation": "weekly review"
+      }
+    ],
+    "assumptions": [
+      {
+        "id": "a_team",
+        "statement": "Team capacity remains stable",
+        "confidence": 0.7
+      }
+    ]
+  },
+  "targetState": {
+    "facts": [
+      {
+        "id": "f_scope",
+        "subject": "project",
+        "predicate": "scope",
+        "value": "phase1",
+        "confidence": 0.9
+      },
+      {
+        "id": "f_budget",
+        "subject": "project",
+        "predicate": "budget",
+        "value": "100",
+        "confidence": 0.8
+      }
+    ],
+    "decisions": [
+      {
+        "id": "d_strategy",
+        "question": "Delivery strategy",
+        "answer": "incremental",
+        "rationale": "low risk",
+        "confidence": 0.8
+      }
+    ],
+    "constraints": [
+      {
+        "id": "c_risk_threshold",
+        "scope": "risk",
+        "rule": "Risk probability must be medium or below",
+        "strength": "high",
+        "maxProbability": "medium"
+      }
+    ],
+    "risks": [
+      {
+        "id": "r_overrun",
+        "title": "Cost overrun",
+        "probability": "low",
+        "impact": "high",
+        "mitigation": "weekly review"
+      }
+    ],
+    "assumptions": [
+      {
+        "id": "a_team",
+        "statement": "Team capacity remains stable",
+        "confidence": 0.7
+      }
+    ]
+  },
+  "coreStubDelta": {
+    "facts": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "decisions": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "constraints": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "risks": {
+      "added": [],
+      "removed": [
+        {
+          "key": "",
+          "unit": {
+            "id": "r_missing",
+            "title": "Missing risk",
+            "probability": "low",
+            "impact": "low",
+            "mitigation": "none"
+          }
+        }
+      ],
+      "modified": [
+        {
+          "key": "",
+          "before": {
+            "id": "r_overrun",
+            "title": "Cost overrun",
+            "probability": "high",
+            "impact": "high",
+            "mitigation": "weekly review"
+          },
+          "after": {
+            "id": "r_overrun",
+            "title": "Cost overrun",
+            "probability": "low",
+            "impact": "high",
+            "mitigation": "weekly review"
+          },
+          "changes": [
+            {
+              "path": "probability",
+              "op": "set",
+              "before": "high",
+              "after": "low"
+            }
+          ]
+        }
+      ]
+    },
+    "assumptions": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    }
+  },
+  "llmStubDelta": {
+    "facts": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "decisions": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "constraints": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "risks": {
+      "added": [],
+      "removed": [
+        {
+          "key": "",
+          "unit": {
+            "id": "r_missing",
+            "title": "Missing risk",
+            "probability": "low",
+            "impact": "low",
+            "mitigation": "none"
+          }
+        }
+      ],
+      "modified": [
+        {
+          "key": "",
+          "before": {
+            "id": "r_overrun",
+            "title": "Cost overrun",
+            "probability": "high",
+            "impact": "high",
+            "mitigation": "weekly review"
+          },
+          "after": {
+            "id": "r_overrun",
+            "title": "Cost overrun",
+            "probability": "low",
+            "impact": "high",
+            "mitigation": "weekly review"
+          },
+          "changes": [
+            {
+              "path": "probability",
+              "op": "set",
+              "before": "high",
+              "after": "low"
+            }
+          ]
+        }
+      ]
+    },
+    "assumptions": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    }
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": false,
+    "requiredDomainsModified": [
+      "risks"
+    ]
+  },
+  "runConfig": {
+    "repetitions": 15
+  }
+}

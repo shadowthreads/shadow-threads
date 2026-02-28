@@ -1,0 +1,57 @@
+{
+  "taskId": "t2_risk_register_growth",
+  "category": "T2",
+  "description": "Expand planning risk register with additional items.",
+  "baseState": {
+    "facts": [
+      { "id": "f_context", "subject": "research", "predicate": "scope", "value": "regional launch", "confidence": 0.76 },
+      { "id": "f_team", "subject": "team", "predicate": "analysts", "value": "2", "confidence": 0.82 }
+    ],
+    "decisions": [
+      { "id": "d_pilot_region", "question": "Pilot region", "answer": "north", "rationale": "largest demand", "confidence": 0.69 },
+      { "id": "d_survey", "question": "Survey cadence", "answer": "bi-weekly", "rationale": "trend visibility", "confidence": 0.64 }
+    ],
+    "constraints": [
+      { "id": "c_budget", "scope": "policy", "rule": "Research spend capped at 30k", "strength": "high" },
+      { "id": "c_tools", "scope": "technical", "rule": "Use approved analytics stack only", "strength": "high" }
+    ],
+    "risks": [
+      { "id": "r_sample_bias", "title": "Sample bias", "probability": "medium", "impact": "medium", "mitigation": "stratified sample" },
+      { "id": "r_response_rate", "title": "Low response rate", "probability": "medium", "impact": "high", "mitigation": "incentives" }
+    ],
+    "assumptions": [
+      { "id": "a_recruitment", "statement": "Recruitment channel remains open", "confidence": 0.66 },
+      { "id": "a_panel", "statement": "Panel partners stay available", "confidence": 0.61 }
+    ]
+  },
+  "targetState": {
+    "facts": [
+      { "id": "f_context", "subject": "research", "predicate": "scope", "value": "regional launch", "confidence": 0.76 },
+      { "id": "f_team", "subject": "team", "predicate": "analysts", "value": "2", "confidence": 0.82 }
+    ],
+    "decisions": [
+      { "id": "d_pilot_region", "question": "Pilot region", "answer": "north", "rationale": "largest demand", "confidence": 0.69 },
+      { "id": "d_survey", "question": "Survey cadence", "answer": "bi-weekly", "rationale": "trend visibility", "confidence": 0.64 }
+    ],
+    "constraints": [
+      { "id": "c_budget", "scope": "policy", "rule": "Research spend capped at 30k", "strength": "high" },
+      { "id": "c_tools", "scope": "technical", "rule": "Use approved analytics stack only", "strength": "high" }
+    ],
+    "risks": [
+      { "id": "r_sample_bias", "title": "Sample bias", "probability": "medium", "impact": "medium", "mitigation": "stratified sample" },
+      { "id": "r_response_rate", "title": "Low response rate", "probability": "medium", "impact": "high", "mitigation": "incentives" },
+      { "id": "r_data_delay", "title": "Data delivery delay", "probability": "low", "impact": "medium", "mitigation": "daily checkpoint" }
+    ],
+    "assumptions": [
+      { "id": "a_recruitment", "statement": "Recruitment channel remains open", "confidence": 0.66 },
+      { "id": "a_panel", "statement": "Panel partners stay available", "confidence": 0.61 }
+    ]
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": true,
+    "maxDistanceCountsSum": 0,
+    "requiredDomainsModified": ["risks"]
+  },
+  "runConfig": { "repetitions": 15 }
+}

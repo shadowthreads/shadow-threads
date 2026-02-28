@@ -176,7 +176,7 @@ function sortFindings(
 
 function normalizeSummary(
   summary: ApplyReportV1['delta']['summary'] | null | undefined
-): ApplyReportV1['delta']['summary'] {
+): ExecutionRecordV1['inputs']['deltaSummary'] {
   if (!summary) return null;
   return {
     modifiedDomains: normalizeDomainOrder(summary.modifiedDomains),
@@ -374,3 +374,5 @@ export function buildExecutionRecordV1(input: BuildExecutionRecordV1Input): Exec
   safeStableHash(record);
   return record;
 }
+
+

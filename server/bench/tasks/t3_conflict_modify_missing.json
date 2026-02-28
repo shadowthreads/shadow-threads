@@ -1,0 +1,271 @@
+{
+  "taskId": "t3_conflict_modify_missing",
+  "category": "T3",
+  "description": "Modify-missing conflict with valid constraint tightening.",
+  "baseState": {
+    "facts": [
+      {
+        "id": "f_scope",
+        "subject": "project",
+        "predicate": "scope",
+        "value": "phase1",
+        "confidence": 0.9
+      },
+      {
+        "id": "f_budget",
+        "subject": "project",
+        "predicate": "budget",
+        "value": "100",
+        "confidence": 0.8
+      }
+    ],
+    "decisions": [
+      {
+        "id": "d_strategy",
+        "question": "Delivery strategy",
+        "answer": "incremental",
+        "rationale": "low risk",
+        "confidence": 0.8
+      }
+    ],
+    "constraints": [
+      {
+        "id": "c_budget",
+        "scope": "policy",
+        "rule": "Budget must stay under 120",
+        "strength": "high"
+      }
+    ],
+    "risks": [
+      {
+        "id": "r_overrun",
+        "title": "Cost overrun",
+        "probability": "medium",
+        "impact": "high",
+        "mitigation": "weekly review"
+      }
+    ],
+    "assumptions": [
+      {
+        "id": "a_team",
+        "statement": "Team capacity remains stable",
+        "confidence": 0.7
+      }
+    ]
+  },
+  "targetState": {
+    "facts": [
+      {
+        "id": "f_scope",
+        "subject": "project",
+        "predicate": "scope",
+        "value": "phase1",
+        "confidence": 0.9
+      },
+      {
+        "id": "f_budget",
+        "subject": "project",
+        "predicate": "budget",
+        "value": "100",
+        "confidence": 0.8
+      }
+    ],
+    "decisions": [
+      {
+        "id": "d_strategy",
+        "question": "Delivery strategy",
+        "answer": "incremental",
+        "rationale": "low risk",
+        "confidence": 0.8
+      }
+    ],
+    "constraints": [
+      {
+        "id": "c_budget",
+        "scope": "policy",
+        "rule": "Budget must stay under 115",
+        "strength": "high"
+      }
+    ],
+    "risks": [
+      {
+        "id": "r_overrun",
+        "title": "Cost overrun",
+        "probability": "medium",
+        "impact": "high",
+        "mitigation": "weekly review"
+      }
+    ],
+    "assumptions": [
+      {
+        "id": "a_team",
+        "statement": "Team capacity remains stable",
+        "confidence": 0.7
+      }
+    ]
+  },
+  "coreStubDelta": {
+    "facts": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "decisions": {
+      "added": [],
+      "removed": [],
+      "modified": [
+        {
+          "key": "",
+          "before": {
+            "id": "d_missing",
+            "question": "Missing decision",
+            "answer": "none",
+            "rationale": "none",
+            "confidence": 0.1
+          },
+          "after": {
+            "id": "d_missing",
+            "question": "Missing decision",
+            "answer": "updated",
+            "rationale": "none",
+            "confidence": 0.1
+          },
+          "changes": [
+            {
+              "path": "answer",
+              "op": "set",
+              "before": "none",
+              "after": "updated"
+            }
+          ]
+        }
+      ]
+    },
+    "constraints": {
+      "added": [],
+      "removed": [],
+      "modified": [
+        {
+          "key": "",
+          "before": {
+            "id": "c_budget",
+            "scope": "policy",
+            "rule": "Budget must stay under 120",
+            "strength": "high"
+          },
+          "after": {
+            "id": "c_budget",
+            "scope": "policy",
+            "rule": "Budget must stay under 115",
+            "strength": "high"
+          },
+          "changes": [
+            {
+              "path": "rule",
+              "op": "set",
+              "before": "Budget must stay under 120",
+              "after": "Budget must stay under 115"
+            }
+          ]
+        }
+      ]
+    },
+    "risks": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "assumptions": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    }
+  },
+  "llmStubDelta": {
+    "facts": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "decisions": {
+      "added": [],
+      "removed": [],
+      "modified": [
+        {
+          "key": "",
+          "before": {
+            "id": "d_missing",
+            "question": "Missing decision",
+            "answer": "none",
+            "rationale": "none",
+            "confidence": 0.1
+          },
+          "after": {
+            "id": "d_missing",
+            "question": "Missing decision",
+            "answer": "updated",
+            "rationale": "none",
+            "confidence": 0.1
+          },
+          "changes": [
+            {
+              "path": "answer",
+              "op": "set",
+              "before": "none",
+              "after": "updated"
+            }
+          ]
+        }
+      ]
+    },
+    "constraints": {
+      "added": [],
+      "removed": [],
+      "modified": [
+        {
+          "key": "",
+          "before": {
+            "id": "c_budget",
+            "scope": "policy",
+            "rule": "Budget must stay under 120",
+            "strength": "high"
+          },
+          "after": {
+            "id": "c_budget",
+            "scope": "policy",
+            "rule": "Budget must stay under 115",
+            "strength": "high"
+          },
+          "changes": [
+            {
+              "path": "rule",
+              "op": "set",
+              "before": "Budget must stay under 120",
+              "after": "Budget must stay under 115"
+            }
+          ]
+        }
+      ]
+    },
+    "risks": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "assumptions": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    }
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": false,
+    "requiredDomainsModified": [
+      "constraints"
+    ]
+  },
+  "runConfig": {
+    "repetitions": 15
+  }
+}

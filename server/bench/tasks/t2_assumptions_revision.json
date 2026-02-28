@@ -1,0 +1,57 @@
+{
+  "taskId": "t2_assumptions_revision",
+  "category": "T2",
+  "description": "Revise explicit assumptions after new planning evidence.",
+  "baseState": {
+    "facts": [
+      { "id": "f_vendor", "subject": "vendor", "predicate": "status", "value": "available", "confidence": 0.7 },
+      { "id": "f_sample", "subject": "sample", "predicate": "target-size", "value": "600", "confidence": 0.8 }
+    ],
+    "decisions": [
+      { "id": "d_sampling", "question": "Sampling strategy", "answer": "uniform", "rationale": "simple execution", "confidence": 0.63 },
+      { "id": "d_interview", "question": "Interview modality", "answer": "remote", "rationale": "broader reach", "confidence": 0.76 }
+    ],
+    "constraints": [
+      { "id": "c_ethics", "scope": "policy", "rule": "Ethics approval before outreach", "strength": "high" },
+      { "id": "c_privacy", "scope": "policy", "rule": "No raw personal data export", "strength": "high" }
+    ],
+    "risks": [
+      { "id": "r_privacy", "title": "Privacy non-compliance", "probability": "low", "impact": "high", "mitigation": "redaction policy" },
+      { "id": "r_recruitment", "title": "Recruitment shortfall", "probability": "medium", "impact": "medium", "mitigation": "partner channels" }
+    ],
+    "assumptions": [
+      { "id": "a_vendor_window", "statement": "Vendor can deliver in 2 weeks", "confidence": 0.55 },
+      { "id": "a_sample_access", "statement": "Sample pool remains accessible", "confidence": 0.62 }
+    ]
+  },
+  "targetState": {
+    "facts": [
+      { "id": "f_vendor", "subject": "vendor", "predicate": "status", "value": "available", "confidence": 0.7 },
+      { "id": "f_sample", "subject": "sample", "predicate": "target-size", "value": "600", "confidence": 0.8 }
+    ],
+    "decisions": [
+      { "id": "d_sampling", "question": "Sampling strategy", "answer": "stratified", "rationale": "reduce bias", "confidence": 0.79 },
+      { "id": "d_interview", "question": "Interview modality", "answer": "remote", "rationale": "broader reach", "confidence": 0.76 }
+    ],
+    "constraints": [
+      { "id": "c_ethics", "scope": "policy", "rule": "Ethics approval before outreach", "strength": "high" },
+      { "id": "c_privacy", "scope": "policy", "rule": "No raw personal data export", "strength": "high" }
+    ],
+    "risks": [
+      { "id": "r_privacy", "title": "Privacy non-compliance", "probability": "low", "impact": "high", "mitigation": "redaction policy" },
+      { "id": "r_recruitment", "title": "Recruitment shortfall", "probability": "low", "impact": "medium", "mitigation": "partner channels" }
+    ],
+    "assumptions": [
+      { "id": "a_vendor_window", "statement": "Vendor can deliver in 3 weeks", "confidence": 0.7 },
+      { "id": "a_sample_access", "statement": "Sample pool remains accessible", "confidence": 0.68 }
+    ]
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": true,
+    "maxDistanceCountsSum": 0,
+    "requiredDomainsModified": ["decisions", "risks", "assumptions"],
+    "requiredAssumptionKeys": ["a_vendor_window"]
+  },
+  "runConfig": { "repetitions": 15 }
+}
