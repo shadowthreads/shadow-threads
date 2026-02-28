@@ -103,32 +103,24 @@ function evaluateB4Hard(byTask) {
   return true;
 }
 
-function evaluateSuggestionCoverage(byTask) {
+function evaluateSuggestionQuality(byTask) {
   const rows = Array.isArray(byTask) ? byTask : [];
   for (const row of rows) {
     const task = asRecord(row);
     if (resolveCategory(task) !== 'T3') continue;
 
-    const b4 = findBaseline(task, 'B4_STRICT_RISK_CLOSURE');
     const b5 = findBaseline(task, 'B5_STRICT_CLOSURE_SUGGESTIONS');
-    if (!b4 || !b5) continue;
-    if (asRecord(asRecord(b4).baseline).supported !== true) continue;
+    if (!b5) continue;
     if (asRecord(asRecord(b5).baseline).supported !== true) continue;
 
-    const b4Metrics = asRecord(asRecord(b4).metrics);
-    const l3Rate = metricMean(b4Metrics.riskLevelL3Rate);
-    if (l3Rate === null || l3Rate <= 0) {
-      continue;
-    }
-
-    const b5Metrics = asRecord(asRecord(b5).metrics);
-    const coverageRate = metricMean(b5Metrics.suggestionsCoverageRate);
-    const blockedByResolutionRate = metricMean(b5Metrics.blockedByResolutionRate);
+    const metrics = asRecord(asRecord(b5).metrics);
+    const coverageRate = metricMean(metrics.suggestionsCoverageRate);
+    const actionabilityRate = metricMean(metrics.suggestionActionabilityRate);
 
     if (coverageRate === null || coverageRate < 0.8) {
       return false;
     }
-    if (blockedByResolutionRate === null || blockedByResolutionRate < 0.8) {
+    if (actionabilityRate === null || actionabilityRate < 0.6) {
       return false;
     }
   }
@@ -139,7 +131,7 @@ function evaluateSuggestionCoverage(byTask) {
 function evaluateGate(stats) {
   const comparisons = Array.isArray(stats.comparisons) ? stats.comparisons : [];
   const byTask = Array.isArray(stats.byTask) ? stats.byTask : [];
-  return evaluateC1(comparisons) && evaluateB4Hard(byTask) && evaluateSuggestionCoverage(byTask);
+  return evaluateC1(comparisons) && evaluateB4Hard(byTask) && evaluateSuggestionQuality(byTask);
 }
 
 function runGate(statsFile) {

@@ -1,35 +1,83 @@
-﻿const path = require('path');
+const fs = require('fs');
+const path = require('path');
 
-const { applyDelta, detectConflicts, stableHash } = require('./algebra-bridge.cjs');
+const { applyDelta, detectConflicts } = require('./algebra-bridge.cjs');
 
-function loadClosurePlanner() {
-  const root = path.resolve(__dirname, '../../..');
-  const plannerPath = path.join(root, 'dist', 'src', 'services', 'delta-closure-planner.js');
-  const loaded = require(plannerPath);
-  if (!loaded || typeof loaded.planDeltaClosure !== 'function') {
-    throw new Error('planner unavailable');
+function requireFromCandidates(candidates) {
+  for (const candidate of candidates) {
+    if (!fs.existsSync(candidate)) {
+      continue;
+    }
+    return require(candidate);
   }
-  return loaded.planDeltaClosure;
+  throw new Error('unavailable');
+}
+
+function isHex64(value) {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+}
+
+function loadModules() {
+  const rootPath = path.resolve(__dirname, '../../..');
+  const plannerModule = requireFromCandidates([
+    path.join(rootPath, 'dist', 'services', 'delta-closure-planner.js'),
+    path.join(rootPath, 'dist', 'src', 'services', 'delta-closure-planner.js'),
+  ]);
+  const policyModule = requireFromCandidates([
+    path.join(rootPath, 'dist', 'services', 'delta-risk-policy.js'),
+    path.join(rootPath, 'dist', 'src', 'services', 'delta-risk-policy.js'),
+  ]);
+  const contractModule = requireFromCandidates([
+    path.join(rootPath, 'dist', 'services', 'closure-contract-v1.js'),
+    path.join(rootPath, 'dist', 'src', 'services', 'closure-contract-v1.js'),
+  ]);
+
+  if (
+    !plannerModule ||
+    typeof plannerModule.planDeltaClosureV1 !== 'function' ||
+    !policyModule ||
+    !policyModule.DEFAULT_RISK_POLICY_V1 ||
+    !contractModule ||
+    typeof contractModule.buildClosureContractV1 !== 'function' ||
+    typeof contractModule.stableStringify !== 'function'
+  ) {
+    throw new Error('unavailable');
+  }
+
+  return {
+    planDeltaClosureV1: plannerModule.planDeltaClosureV1,
+    policy: policyModule.DEFAULT_RISK_POLICY_V1,
+    buildClosureContractV1: contractModule.buildClosureContractV1,
+    stableStringify: contractModule.stableStringify,
+    assertJsonSafe: contractModule.assertJsonSafe,
+  };
+}
+
+function makeBaseState() {
+  return {
+    facts: [{ key: 'fact.alpha', statement: 'alpha' }],
+    decisions: [],
+    constraints: [],
+    risks: [],
+    assumptions: [],
+  };
 }
 
 function makeProposedDelta() {
   return {
     schemaVersion: 'sdiff-0.1',
-    base: { revisionHash: 'selftest-base' },
-    target: { revisionHash: 'selftest-target' },
+    base: { revisionHash: 'closure-selftest-base' },
+    target: { revisionHash: 'closure-selftest-target' },
     facts: { added: [], removed: [], modified: [] },
     decisions: {
       added: [],
       removed: [],
       modified: [
         {
-          key: 'd1',
-          before: { id: 'd1', question: 'ship?', answer: 'no' },
-          after: { id: 'd1', question: 'ship?', answer: 'yes' },
-          changes: [
-            { path: 'id', op: 'set', after: 'd2' },
-            { path: 'id.meta', op: 'set', after: 'x' },
-          ],
+          key: 'decision.missing',
+          before: null,
+          after: { key: 'decision.missing', answer: 'accept' },
+          changes: [{ path: 'answer', op: 'set', after: 'accept' }],
         },
       ],
     },
@@ -66,53 +114,62 @@ function makeProposedDelta() {
   };
 }
 
-function runSelftest() {
-  const planDeltaClosure = loadClosurePlanner();
-  const baseState = {
-    facts: [],
-    decisions: [
-      { id: 'd1', question: 'ship?', answer: 'no' },
-      { id: 'd2', question: 'ship?', answer: 'yes' },
-    ],
-    constraints: [],
-    risks: [],
-    assumptions: [],
-  };
-
+function buildApplyReport(modules) {
+  const baseState = makeBaseState();
   const proposedDelta = makeProposedDelta();
-  const planA = planDeltaClosure({
+  const plan = modules.planDeltaClosureV1({
     baseState,
     proposedDelta,
     mode: 'strict',
-    policy: { requirePostApplyZeroConflicts: true },
+    policy: modules.policy,
   });
-
-  const hasDependencyBlocked = planA.rejected.some(
-    (entry) => entry.reasonCode === 'DEPENDENCY_BLOCKED' && Array.isArray(entry.blockedBy) && entry.blockedBy.length > 0
-  );
-
-  const transition = applyDelta(baseState, planA.acceptedDelta, { mode: 'best_effort' });
+  const contractV1 = modules.buildClosureContractV1({
+    proposedDelta,
+    acceptedDelta: plan.acceptedDelta,
+    rejected: plan.rejected,
+    suggestions: plan.suggestions,
+    diagnostics: plan.diagnostics,
+  });
+  const transition = applyDelta(baseState, plan.acceptedDelta, { mode: 'best_effort' });
   const postApplyConflicts = detectConflicts(transition.nextState);
-
-  const planB = planDeltaClosure({
-    baseState,
-    proposedDelta,
-    mode: 'strict',
-    policy: { requirePostApplyZeroConflicts: true },
-  });
-
-  const deterministic =
-    stableHash(planA.acceptedDelta) === stableHash(planB.acceptedDelta) &&
-    stableHash(planA.rejected) === stableHash(planB.rejected);
-
-  const ok = hasDependencyBlocked && postApplyConflicts.length === 0 && deterministic;
-  process.stdout.write(ok ? 'CLOSURE_SELFTEST_OK\n' : 'CLOSURE_SELFTEST_FAIL\n');
-  process.exit(ok ? 0 : 1);
+  return {
+    applyReport: {
+      llmDelta: {
+        closure: {
+          contractV1,
+        },
+      },
+    },
+    postApplyConflicts,
+  };
 }
 
-try {
-  runSelftest();
-} catch (_error) {
-  process.stdout.write('CLOSURE_SELFTEST_FAIL\n');
-  process.exit(1);
+function main() {
+  try {
+    const modules = loadModules();
+    const runA = buildApplyReport(modules);
+    const runB = buildApplyReport(modules);
+    const contractA = runA.applyReport.llmDelta.closure.contractV1;
+    const contractB = runB.applyReport.llmDelta.closure.contractV1;
+
+    modules.assertJsonSafe(contractA);
+
+    const ok =
+      contractA &&
+      contractA.schema === 'closure-contract-1' &&
+      isHex64(contractA.accepted.acceptedHash) &&
+      isHex64(contractA.accepted.proposedHash) &&
+      modules.stableStringify(contractA) === modules.stableStringify(contractB) &&
+      contractA.diagnostics.closureViolationFlag === false &&
+      Array.isArray(runA.postApplyConflicts) &&
+      runA.postApplyConflicts.length === 0;
+
+    process.stdout.write(ok ? 'CLOSURE_SELFTEST_OK\n' : 'CLOSURE_SELFTEST_FAIL\n');
+    process.exit(ok ? 0 : 1);
+  } catch (_error) {
+    process.stdout.write('CLOSURE_SELFTEST_FAIL\n');
+    process.exit(1);
+  }
 }
+
+main();

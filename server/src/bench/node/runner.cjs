@@ -105,6 +105,27 @@ function zeroRiskLevelCounts() {
   return { L0: 0, L1: 0, L2: 0, L3: 0 };
 }
 
+
+function rejectedTargetKey(entry) {
+  const record = asRecord(entry);
+  const domain = typeof record.domain === 'string' ? record.domain : 'NULL';
+  const key = typeof record.key === 'string' ? record.key : 'NULL';
+  const pathValue = typeof record.path === 'string' ? record.path : record.path === null ? 'NULL' : 'NULL';
+  const op = typeof record.op === 'string' ? record.op : 'NULL';
+  return `${domain}|${key}|${pathValue}|${op}`;
+}
+
+function suggestionTargetKey(entry) {
+  const record = asRecord(entry);
+  const payload = asRecord(record.payload);
+  const appliesTo = asRecord(payload.appliesTo);
+  const domain = typeof appliesTo.domain === 'string' ? appliesTo.domain : 'NULL';
+  const key = typeof appliesTo.key === 'string' ? appliesTo.key : 'NULL';
+  const pathValue = typeof appliesTo.path === 'string' ? appliesTo.path : appliesTo.path === null ? 'NULL' : 'NULL';
+  const op = typeof appliesTo.op === 'string' ? appliesTo.op : 'NULL';
+  return `${domain}|${key}|${pathValue}|${op}`;
+}
+
 function normalizeFieldChange(rawChange) {
   const change = asRecord(rawChange);
   const op = change.op === 'set' || change.op === 'unset' || change.op === 'append' || change.op === 'remove' ? change.op : 'set';
@@ -481,6 +502,8 @@ function stableStringifyRecord(record) {
       totalBlockedByEdges: record.suggestions.totalBlockedByEdges,
       coverageRate: record.suggestions.coverageRate,
       blockedByResolutionRate: record.suggestions.blockedByResolutionRate,
+      actionabilityRate: record.suggestions.actionabilityRate,
+      l3EscalationRate: record.suggestions.l3EscalationRate,
     },
     drift: {
       equalsTargetHash: record.drift.equalsTargetHash,
@@ -593,12 +616,14 @@ function unsupportedRecord(task, baseline, rep, reason) {
       riskLevelL3Rate: baseline.family === 'strict_closure' || baseline.family === 'risk_closure' || baseline.family === 'strict_closure_suggestions' ? 0 : null,
     },
     suggestions: {
-      count: baseline.family === 'strict_closure_suggestions' ? 0 : null,
-      coveredRejectedCount: baseline.family === 'strict_closure_suggestions' ? 0 : null,
-      blockedByCoveredCount: baseline.family === 'strict_closure_suggestions' ? 0 : null,
-      totalBlockedByEdges: baseline.family === 'strict_closure_suggestions' ? 0 : null,
-      coverageRate: baseline.family === 'strict_closure_suggestions' ? 0 : null,
-      blockedByResolutionRate: baseline.family === 'strict_closure_suggestions' ? 0 : null,
+      count: baseline.family === 'strict_closure' || baseline.family === 'strict_closure_suggestions' ? 0 : null,
+      coveredRejectedCount: baseline.family === 'strict_closure' || baseline.family === 'strict_closure_suggestions' ? 0 : null,
+      blockedByCoveredCount: baseline.family === 'strict_closure' || baseline.family === 'strict_closure_suggestions' ? 0 : null,
+      totalBlockedByEdges: baseline.family === 'strict_closure' || baseline.family === 'strict_closure_suggestions' ? 0 : null,
+      coverageRate: baseline.family === 'strict_closure' || baseline.family === 'strict_closure_suggestions' ? 0 : null,
+      blockedByResolutionRate: baseline.family === 'strict_closure' || baseline.family === 'strict_closure_suggestions' ? 0 : null,
+      actionabilityRate: baseline.family === 'strict_closure' || baseline.family === 'strict_closure_suggestions' ? 0 : null,
+      l3EscalationRate: baseline.family === 'strict_closure' || baseline.family === 'strict_closure_suggestions' ? 0 : null,
     },
     drift: {
       equalsTargetHash: false,
@@ -755,24 +780,81 @@ function runSingle(task, baseline, rep) {
       ? 0
       : null;
 
+  const suggestionRecords =
+    baseline.family === 'strict_closure_suggestions' && closurePlan ? asArray(closurePlan.suggestions) : [];
+  const rejectedRecords =
+    (baseline.family === 'strict_closure' || baseline.family === 'strict_closure_suggestions') && closurePlan
+      ? asArray(closurePlan.rejected)
+      : [];
+  const rejectedKeys = new Set(rejectedRecords.map((entry) => rejectedTargetKey(entry)));
+  const coveredKeys = new Set();
+  const actionableKeys = new Set();
+  let l3EscalationCount = 0;
+
+  for (const suggestion of suggestionRecords) {
+    const key = suggestionTargetKey(suggestion);
+    if (rejectedKeys.has(key)) {
+      coveredKeys.add(key);
+      if (asRecord(suggestion).actionType !== 'REQUEST_HUMAN_CONFIRM') {
+        actionableKeys.add(key);
+      }
+      if (asRecord(suggestion).actionType === 'PROMOTE_TO_L3_REVIEW') {
+        l3EscalationCount += 1;
+      }
+    }
+  }
+
   const suggestionDiagnostics =
     baseline.family === 'strict_closure_suggestions' && closurePlan && closurePlan.suggestionDiagnostics
       ? closurePlan.suggestionDiagnostics
       : null;
   const totalBlockedByEdges =
     baseline.family === 'strict_closure_suggestions' && closurePlan
-      ? asArray(closurePlan.rejected).reduce((total, entry) => total + asArray(asRecord(entry).blockedBy).length, 0)
+      ? rejectedRecords.reduce((total, entry) => total + asArray(asRecord(entry).blockedBy).length, 0)
+      : baseline.family === 'strict_closure'
+      ? 0
       : null;
-  const suggestionCount = suggestionDiagnostics ? suggestionDiagnostics.suggestionCount : null;
-  const coveredRejectedCount = suggestionDiagnostics ? suggestionDiagnostics.coveredRejectedCount : null;
-  const blockedByCoveredCount = suggestionDiagnostics ? suggestionDiagnostics.blockedByCoveredCount : null;
+  const suggestionCount =
+    baseline.family === 'strict_closure_suggestions'
+      ? suggestionRecords.length
+      : baseline.family === 'strict_closure'
+      ? 0
+      : null;
+  const coveredRejectedCount =
+    baseline.family === 'strict_closure_suggestions'
+      ? coveredKeys.size
+      : baseline.family === 'strict_closure'
+      ? 0
+      : null;
+  const blockedByCoveredCount =
+    baseline.family === 'strict_closure_suggestions' && suggestionDiagnostics
+      ? suggestionDiagnostics.blockedByCoveredCount
+      : baseline.family === 'strict_closure'
+      ? 0
+      : null;
   const suggestionsCoverageRate =
-    suggestionDiagnostics && closureRejectedCount !== null
-      ? round6(suggestionDiagnostics.coveredRejectedCount / Math.max(1, closureRejectedCount))
+    baseline.family === 'strict_closure_suggestions'
+      ? round6(coveredKeys.size / Math.max(1, closureRejectedCount ?? 0))
+      : baseline.family === 'strict_closure'
+      ? round6(0 / Math.max(1, closureRejectedCount ?? 0))
       : null;
   const blockedByResolutionRate =
-    suggestionDiagnostics && totalBlockedByEdges !== null
-      ? round6(suggestionDiagnostics.blockedByCoveredCount / Math.max(1, totalBlockedByEdges))
+    baseline.family === 'strict_closure_suggestions'
+      ? round6((blockedByCoveredCount ?? 0) / Math.max(1, totalBlockedByEdges ?? 0))
+      : baseline.family === 'strict_closure'
+      ? 0
+      : null;
+  const suggestionActionabilityRate =
+    baseline.family === 'strict_closure_suggestions'
+      ? round6(actionableKeys.size / Math.max(1, closureRejectedCount ?? 0))
+      : baseline.family === 'strict_closure'
+      ? round6(0 / Math.max(1, closureRejectedCount ?? 0))
+      : null;
+  const l3EscalationRate =
+    baseline.family === 'strict_closure_suggestions'
+      ? round6(l3EscalationCount / Math.max(1, closureRejectedCount ?? 0))
+      : baseline.family === 'strict_closure'
+      ? 0
       : null;
 
   const assertions = evaluateAssertions({
@@ -826,6 +908,8 @@ function runSingle(task, baseline, rep) {
       totalBlockedByEdges,
       coverageRate: suggestionsCoverageRate,
       blockedByResolutionRate,
+      actionabilityRate: suggestionActionabilityRate,
+      l3EscalationRate,
     },
     drift: {
       equalsTargetHash,

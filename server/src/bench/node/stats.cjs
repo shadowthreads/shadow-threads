@@ -43,6 +43,8 @@ const METRIC_ORDER = [
   'riskClosureMaxClosureSizeRatioMean',
   'riskLevelL3Rate',
   'suggestionsCoverageRate',
+  'suggestionActionabilityRate',
+  'l3EscalationRate',
   'blockedByResolutionRate',
   'suggestionCountMean',
 ];
@@ -683,6 +685,8 @@ function aggregateBaseline(records, baseline) {
         riskClosureMaxClosureSizeRatioMean: null,
         riskLevelL3Rate: null,
         suggestionsCoverageRate: null,
+        suggestionActionabilityRate: null,
+        l3EscalationRate: null,
         blockedByResolutionRate: null,
         suggestionCountMean: null,
       },
@@ -777,6 +781,12 @@ function aggregateBaseline(records, baseline) {
       ),
       suggestionsCoverageRate: meanWithCI(
         toNumberArray(records, () => true, (record) => asRecord(asRecord(record).suggestions).coverageRate)
+      ),
+      suggestionActionabilityRate: meanWithCI(
+        toNumberArray(records, () => true, (record) => asRecord(asRecord(record).suggestions).actionabilityRate)
+      ),
+      l3EscalationRate: meanWithCI(
+        toNumberArray(records, () => true, (record) => asRecord(asRecord(record).suggestions).l3EscalationRate)
       ),
       blockedByResolutionRate: meanWithCI(
         toNumberArray(records, () => true, (record) => asRecord(asRecord(record).suggestions).blockedByResolutionRate)
@@ -913,6 +923,18 @@ function buildComparisonMetrics(lhsRecords, rhsRecords) {
       () => true,
       (record) => asRecord(asRecord(record).suggestions).coverageRate
     ),
+    suggestionActionabilityRate: buildMeanMetric(
+      lhsRecords,
+      rhsRecords,
+      () => true,
+      (record) => asRecord(asRecord(record).suggestions).actionabilityRate
+    ),
+    l3EscalationRate: buildMeanMetric(
+      lhsRecords,
+      rhsRecords,
+      () => true,
+      (record) => asRecord(asRecord(record).suggestions).l3EscalationRate
+    ),
     blockedByResolutionRate: buildMeanMetric(
       lhsRecords,
       rhsRecords,
@@ -1042,6 +1064,8 @@ function buildStats(records, summaryRowsCount) {
       'riskClosureMaxClosureSizeRatioMean',
       'riskLevelL3Rate',
       'suggestionsCoverageRate',
+      'suggestionActionabilityRate',
+      'l3EscalationRate',
       'blockedByResolutionRate',
       'suggestionCountMean',
     ],

@@ -1,30 +1,16 @@
-import { stableHash } from '../algebra/semanticDiff/key';
 import type { DomainName } from '../algebra/semanticDiff/types';
 import type { RiskLevel, RiskPolicyV1 } from './delta-risk-policy';
+import type { ClosureActionType, ClosureSuggestionV1 } from './closure-contract-v1';
 
 const DOMAIN_ORDER: DomainName[] = ['facts', 'decisions', 'constraints', 'risks', 'assumptions'];
-const KIND_ORDER: ClosureSuggestionV1['kind'][] = [
+const ACTION_ORDER: ClosureActionType[] = [
   'ADD_MISSING_DEP',
-  'REMOVE_CONFLICTING_OP',
-  'SPLIT_MODIFY',
+  'REQUEST_HUMAN_CONFIRM',
+  'SPLIT_PATCH',
+  'RETRY_WITH_CONTEXT',
   'PROMOTE_TO_L3_REVIEW',
 ];
 const DEFAULT_MAX_SUGGESTIONS = 64;
-
-export type ClosureSuggestionV1 = {
-  schema: 'closure-suggestion-1';
-  suggestionId: string;
-  appliesTo: {
-    domain: DomainName;
-    key?: string | null;
-    path?: string | null;
-    op?: string | null;
-  };
-  kind: 'ADD_MISSING_DEP' | 'REMOVE_CONFLICTING_OP' | 'SPLIT_MODIFY' | 'PROMOTE_TO_L3_REVIEW';
-  message: string;
-  blockedBy?: Array<{ domain: DomainName; key?: string | null; path?: string | null }> | null;
-  riskLevel: 'L0' | 'L1' | 'L2' | 'L3';
-};
 
 type RejectedInput = {
   domain: DomainName;
@@ -35,6 +21,8 @@ type RejectedInput = {
   blockedBy?: Array<{ domain: DomainName; key?: string | null; path?: string | null }> | null;
   riskLevel: RiskLevel;
 };
+
+export type { ClosureSuggestionV1 } from './closure-contract-v1';
 
 function makeError(code: 'E_SUGGESTION_INPUT_INVALID' | 'E_SUGGESTION_NON_JSON_SAFE', message: string): Error & { code: string } {
   const error = new Error(message) as Error & { code: string };
@@ -52,11 +40,6 @@ function compareDomains(a: DomainName, b: DomainName): number {
   return DOMAIN_ORDER.indexOf(a) - DOMAIN_ORDER.indexOf(b) || compareStrings(a, b);
 }
 
-function normalizeIdPart(value: string | null | undefined): string {
-  if (value === null || value === undefined || value.length === 0) return 'NULL';
-  return value.replace(/\s+/g, '_');
-}
-
 function isDomainName(value: unknown): value is DomainName {
   return value === 'facts' || value === 'decisions' || value === 'constraints' || value === 'risks' || value === 'assumptions';
 }
@@ -65,77 +48,103 @@ function isRiskLevel(value: unknown): value is RiskLevel {
   return value === 'L0' || value === 'L1' || value === 'L2' || value === 'L3';
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function isJsonSafe(value: unknown): boolean {
+  if (value === null) return true;
+  const valueType = typeof value;
+  if (valueType === 'string' || valueType === 'boolean') return true;
+  if (valueType === 'number') return Number.isFinite(value);
+  if (valueType === 'undefined' || valueType === 'function' || valueType === 'symbol' || valueType === 'bigint') return false;
+  if (Array.isArray(value)) return value.every((entry) => isJsonSafe(entry));
+  if (!isPlainObject(value)) return false;
+  for (const key of Object.keys(value)) {
+    if (!isJsonSafe(value[key])) return false;
+  }
+  return true;
+}
+
 function ensureJsonSafe(value: unknown): void {
-  try {
-    stableHash(value);
-  } catch {
+  if (!isJsonSafe(value)) {
     throw makeError('E_SUGGESTION_NON_JSON_SAFE', 'Suggestion contains non JSON-safe value');
   }
 }
 
 function normalizeBlockedBy(
   blockedBy: RejectedInput['blockedBy']
-): Array<{ domain: DomainName; key?: string | null; path?: string | null }> | null {
-  if (!Array.isArray(blockedBy) || blockedBy.length === 0) return null;
+): Array<{ domain: DomainName; key?: string | null; path?: string | null }> {
+  if (!Array.isArray(blockedBy) || blockedBy.length === 0) return [];
 
-  const normalized = blockedBy
+  return blockedBy
     .filter((entry) => entry && isDomainName(entry.domain))
     .map((entry) => ({
       domain: entry.domain,
-      key: typeof entry.key === 'string' ? entry.key : entry.key === null ? null : null,
-      path: typeof entry.path === 'string' ? entry.path : entry.path === null ? null : null,
+      key: typeof entry.key === 'string' ? entry.key : null,
+      path: typeof entry.path === 'string' ? entry.path : null,
     }))
     .sort((left, right) => {
       return (
         compareDomains(left.domain, right.domain) ||
         compareStrings(left.key ?? 'NULL', right.key ?? 'NULL') ||
-        compareStrings(left.path ?? '￿', right.path ?? '￿')
+        compareStrings(left.path ?? 'NULL', right.path ?? 'NULL')
       );
     });
-
-  return normalized.length > 0 ? normalized : null;
 }
 
 function compareSuggestions(a: ClosureSuggestionV1, b: ClosureSuggestionV1): number {
+  const left = isPlainObject(a.payload) ? a.payload : {};
+  const right = isPlainObject(b.payload) ? b.payload : {};
+  const leftAppliesTo = isPlainObject(left.appliesTo) ? left.appliesTo : {};
+  const rightAppliesTo = isPlainObject(right.appliesTo) ? right.appliesTo : {};
+  const leftDomain = isDomainName(leftAppliesTo.domain) ? leftAppliesTo.domain : 'facts';
+  const rightDomain = isDomainName(rightAppliesTo.domain) ? rightAppliesTo.domain : 'facts';
+
   return (
-    compareDomains(a.appliesTo.domain, b.appliesTo.domain) ||
-    compareStrings(a.appliesTo.key ?? 'NULL', b.appliesTo.key ?? 'NULL') ||
-    compareStrings(a.appliesTo.path ?? '￿', b.appliesTo.path ?? '￿') ||
-    KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) ||
-    compareStrings(a.suggestionId, b.suggestionId)
+    compareDomains(leftDomain, rightDomain) ||
+    compareStrings(typeof leftAppliesTo.key === 'string' ? leftAppliesTo.key : 'NULL', typeof rightAppliesTo.key === 'string' ? rightAppliesTo.key : 'NULL') ||
+    compareStrings(typeof leftAppliesTo.path === 'string' ? leftAppliesTo.path : 'NULL', typeof rightAppliesTo.path === 'string' ? rightAppliesTo.path : 'NULL') ||
+    ACTION_ORDER.indexOf(a.actionType) - ACTION_ORDER.indexOf(b.actionType) ||
+    compareStrings(a.code, b.code)
   );
 }
 
-function suggestionMessage(kind: ClosureSuggestionV1['kind']): string {
-  if (kind === 'ADD_MISSING_DEP') return 'Add missing dependency';
-  if (kind === 'REMOVE_CONFLICTING_OP') return 'Remove conflicting operation';
-  if (kind === 'SPLIT_MODIFY') return 'Split modify into field-level patches';
-  return 'Requires L3 review';
+function makeMessage(actionType: ClosureActionType): string {
+  if (actionType === 'ADD_MISSING_DEP') return 'Add missing dependency';
+  if (actionType === 'REQUEST_HUMAN_CONFIRM') return 'Request human confirm';
+  if (actionType === 'PROMOTE_TO_L3_REVIEW') return 'Requires L3 review';
+  if (actionType === 'SPLIT_PATCH') return 'Split patch';
+  return 'Retry with context';
 }
 
 function makeSuggestion(
   rejected: RejectedInput,
-  kind: ClosureSuggestionV1['kind']
+  actionType: ClosureActionType,
+  blockedBy: Array<{ domain: DomainName; key?: string | null; path?: string | null }>
 ): ClosureSuggestionV1 {
-  const appliesTo = {
-    domain: rejected.domain,
-    key: rejected.key ?? null,
-    path: rejected.path ?? null,
-    op: rejected.op ?? null,
+  const payload = {
+    appliesTo: {
+      domain: rejected.domain,
+      key: rejected.key ?? null,
+      path: rejected.path ?? null,
+      op: rejected.op ?? null,
+    },
+    blockedBy: blockedBy.length > 0 ? blockedBy : null,
   };
 
-  const suggestion: ClosureSuggestionV1 = {
+  ensureJsonSafe(payload);
+
+  return {
     schema: 'closure-suggestion-1',
-    suggestionId: `SUG_${rejected.domain}_${kind}_${normalizeIdPart(rejected.key ?? null)}_${normalizeIdPart(rejected.path ?? null)}`,
-    appliesTo,
-    kind,
-    message: suggestionMessage(kind),
-    blockedBy: kind === 'ADD_MISSING_DEP' ? normalizeBlockedBy(rejected.blockedBy) : null,
+    code: actionType,
+    message: makeMessage(actionType),
+    actionType,
+    payload,
     riskLevel: rejected.riskLevel,
   };
-
-  ensureJsonSafe(suggestion);
-  return suggestion;
 }
 
 function validateInput(input: {
@@ -153,8 +162,8 @@ function validateInput(input: {
     }
   }
 
-  const maxSuggestionsRaw = input.limits && typeof input.limits.maxSuggestions === 'number' ? input.limits.maxSuggestions : DEFAULT_MAX_SUGGESTIONS;
-  const maxSuggestions = Number.isFinite(maxSuggestionsRaw) && maxSuggestionsRaw > 0 ? Math.floor(maxSuggestionsRaw) : DEFAULT_MAX_SUGGESTIONS;
+  const rawLimit = input.limits && typeof input.limits.maxSuggestions === 'number' ? input.limits.maxSuggestions : DEFAULT_MAX_SUGGESTIONS;
+  const maxSuggestions = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : DEFAULT_MAX_SUGGESTIONS;
   return { rejected: input.rejected, policy: input.policy, maxSuggestions };
 }
 
@@ -173,59 +182,44 @@ export function buildClosureSuggestionsV1(input: {
 
   for (const rejected of validated.rejected) {
     const blockedBy = normalizeBlockedBy(rejected.blockedBy);
-    const kinds: ClosureSuggestionV1['kind'][] = [];
+    const actions: ClosureActionType[] = [];
 
-    if (rejected.reasonCode === 'DEPENDENCY_BLOCKED' || blockedBy !== null) {
-      kinds.push('ADD_MISSING_DEP');
+    if (rejected.reasonCode === 'DEPENDENCY_BLOCKED' || blockedBy.length > 0) {
+      actions.push('ADD_MISSING_DEP');
+    } else if (rejected.reasonCode === 'CONFLICT') {
+      actions.push('REQUEST_HUMAN_CONFIRM');
+      actions.push('RETRY_WITH_CONTEXT');
+    } else if (rejected.reasonCode === 'INVALID_OP' && rejected.op === 'modify' && validated.policy.strict.fieldLevelModify === 'on') {
+      actions.push('SPLIT_PATCH');
+    } else if (rejected.reasonCode === 'NON_JSON_SAFE') {
+      actions.push('RETRY_WITH_CONTEXT');
     }
-    if (rejected.reasonCode === 'CONFLICT') {
-      kinds.push('REMOVE_CONFLICTING_OP');
-    }
-    if (rejected.reasonCode === 'INVALID_OP' && rejected.op === 'modify' && validated.policy.strict.fieldLevelModify === 'on') {
-      kinds.push('SPLIT_MODIFY');
-    }
+
     if (rejected.riskLevel === 'L3') {
-      kinds.push('PROMOTE_TO_L3_REVIEW');
+      actions.push('PROMOTE_TO_L3_REVIEW');
     }
 
-    if (kinds.length === 0) continue;
+    if (actions.length === 0) continue;
+
     coveredRejectedCount += 1;
-    if (blockedBy !== null) {
+    if (blockedBy.length > 0) {
       blockedByCoveredCount += blockedBy.length;
     }
 
-    for (const kind of kinds) {
-      suggestions.push(
-        makeSuggestion(
-          {
-            ...rejected,
-            blockedBy,
-          },
-          kind
-        )
-      );
+    for (const actionType of actions) {
+      suggestions.push(makeSuggestion(rejected, actionType, blockedBy));
     }
   }
 
-  const unique = new Map<string, ClosureSuggestionV1>();
-  for (const suggestion of suggestions) {
-    if (!unique.has(suggestion.suggestionId)) {
-      unique.set(suggestion.suggestionId, suggestion);
-    }
-  }
-
-  const ordered = [...unique.values()].sort(compareSuggestions).slice(0, validated.maxSuggestions);
-  const diagnostics = {
-    suggestionCount: ordered.length,
-    coveredRejectedCount,
-    blockedByCoveredCount,
-  };
-
+  const ordered = [...suggestions].sort(compareSuggestions).slice(0, validated.maxSuggestions);
   ensureJsonSafe(ordered);
-  ensureJsonSafe(diagnostics);
 
   return {
     suggestions: ordered,
-    diagnostics,
+    diagnostics: {
+      suggestionCount: ordered.length,
+      coveredRejectedCount,
+      blockedByCoveredCount,
+    },
   };
 }

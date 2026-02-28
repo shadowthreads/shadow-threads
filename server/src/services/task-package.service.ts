@@ -19,6 +19,7 @@ import { buildExecutionRecordV1, type ExecutionRecordV1 } from './execution-reco
 import { replayExecutionRecordV1 } from './execution-replay.service';
 import { planDeltaClosureV1, type ClosureRejected, type ClosureSuggestion } from './delta-closure-planner';
 import { DEFAULT_RISK_POLICY_V1, normalizeRiskPolicyV1, type RiskPolicyV1 } from './delta-risk-policy';
+import { buildClosureContractV1, type ClosureContractV1 } from './closure-contract-v1';
 
 export type CreatePackageFromSnapshotInput = {
   title?: string;
@@ -135,6 +136,7 @@ type ApplyReportV2 = {
         coveredRejectedCount: number;
         blockedByCoveredCount: number;
       };
+      contractV1: ClosureContractV1;
       diagnostics: {
         candidateCount: number;
         acceptedCount: number;
@@ -291,11 +293,11 @@ function sortClosureRejected(a: ClosureRejected, b: ClosureRejected): number {
 
 function sortClosureSuggestion(a: ClosureSuggestion, b: ClosureSuggestion): number {
   return (
-    (TRANSITION_DOMAIN_RANK.get(a.appliesTo.domain) ?? 0) - (TRANSITION_DOMAIN_RANK.get(b.appliesTo.domain) ?? 0) ||
-    compareLiteral(a.appliesTo.key ?? '', b.appliesTo.key ?? '') ||
-    compareLiteral(a.appliesTo.path ?? '￿', b.appliesTo.path ?? '￿') ||
-    compareLiteral(a.kind, b.kind) ||
-    compareLiteral(a.suggestionId, b.suggestionId)
+    compareLiteral(a.actionType, b.actionType) ||
+    compareLiteral(a.code, b.code) ||
+    compareLiteral(stableHash(a.payload), stableHash(b.payload)) ||
+    compareLiteral(a.message, b.message) ||
+    compareLiteral(a.riskLevel ?? '', b.riskLevel ?? '')
   );
 }
 
@@ -1053,6 +1055,16 @@ export class TaskPackageService {
                 policy: effectiveRiskPolicy,
               })
             : null;
+        const closureContract =
+          closurePlan
+            ? buildClosureContractV1({
+                proposedDelta: llmDelta,
+                acceptedDelta: closurePlan.acceptedDelta,
+                rejected: closurePlan.rejected,
+                suggestions: closurePlan.suggestions,
+                diagnostics: closurePlan.diagnostics,
+              })
+            : null;
         const appliedDelta = closurePlan ? closurePlan.acceptedDelta : llmDelta;
         const llmTransition = applyDelta(llmBaseState, appliedDelta, {
           mode: llmDeltaMode === 'strict' ? 'best_effort' : llmDeltaMode,
@@ -1082,6 +1094,7 @@ export class TaskPackageService {
                   rejected: [...closurePlan.rejected].sort(sortClosureRejected),
                   suggestions: [...closurePlan.suggestions].sort(sortClosureSuggestion),
                   suggestionDiagnostics: closurePlan.suggestionDiagnostics,
+                  contractV1: closureContract!,
                   diagnostics: closurePlan.diagnostics,
                 },
               }
@@ -1110,6 +1123,11 @@ export class TaskPackageService {
                   code: 'SUGGESTIONS_EMITTED',
                   count: closurePlan.suggestionDiagnostics.suggestionCount,
                   message: 'Suggestions emitted',
+                },
+                {
+                  code: 'CLOSURE_CONTRACT_V1_EMITTED',
+                  count: closurePlan.suggestionDiagnostics.suggestionCount,
+                  message: 'Closure contract v1 emitted',
                 },
               ].sort(sortReportV1Finding),
             },
