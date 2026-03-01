@@ -10,9 +10,11 @@ import { z } from 'zod';
 import { asyncHandler, requireAuth, validate } from '../middleware';
 import { idParamSchema } from '../middleware/validation';
 import { TaskPackageService } from '../services/task-package.service';
+import { TransferPackageService } from '../services/transfer-package.service';
 
 const router = Router();
 const svc = new TaskPackageService();
+const transferSvc = new TransferPackageService();
 
 const targetSchemaVersionSchema = z.enum(['tpkg-0.1', 'tpkg-0.2']);
 
@@ -37,6 +39,8 @@ function normalizeServiceCode(code: unknown):
   | 'CONFLICT_RETRY_EXHAUSTED'
   | 'E_INVALID_INPUT'
   | 'E_LLM_DELTA_CONFLICT'
+  | 'E_TRANSFER_INVALID'
+  | 'E_TRANSFER_NON_JSON_SAFE'
   | 'UNKNOWN' {
   if (typeof code !== 'string') return 'UNKNOWN';
   if (
@@ -46,7 +50,9 @@ function normalizeServiceCode(code: unknown):
     code === 'INVALID_INPUT' ||
     code === 'CONFLICT_RETRY_EXHAUSTED' ||
     code === 'E_INVALID_INPUT' ||
-    code === 'E_LLM_DELTA_CONFLICT'
+    code === 'E_LLM_DELTA_CONFLICT' ||
+    code === 'E_TRANSFER_INVALID' ||
+    code === 'E_TRANSFER_NON_JSON_SAFE'
   ) {
     return code;
   }
@@ -56,6 +62,8 @@ function normalizeServiceCode(code: unknown):
 function errorMessageForCode(code: ReturnType<typeof normalizeServiceCode>): string {
   if (code === 'E_INVALID_INPUT') return "llmDeltaMode must be 'best_effort' or 'strict'";
   if (code === 'E_LLM_DELTA_CONFLICT') return 'LLM delta contains conflicts';
+  if (code === 'E_TRANSFER_INVALID') return 'Transfer package input is invalid';
+  if (code === 'E_TRANSFER_NON_JSON_SAFE') return 'Transfer package contains non JSON-safe value';
   return code;
 }
 
@@ -114,6 +122,104 @@ const importPackageSchema = z.object({
   targetSchemaVersion: targetSchemaVersionSchema.optional(),
 });
 type ImportPackageBody = z.infer<typeof importPackageSchema>;
+
+const transferDomainValues = ['facts', 'decisions', 'constraints', 'risks', 'assumptions'] as const;
+type TransferDomain = (typeof transferDomainValues)[number];
+const transferDomainSet = new Set<string>(transferDomainValues);
+
+const transferBodySchema = z.object({
+  revisionId: z.string().uuid().optional(),
+  include: z
+    .object({
+      closureContractV1: z.boolean().optional(),
+      applyReportV1Hash: z.boolean().optional(),
+      executionRecordV1Hash: z.boolean().optional(),
+    })
+    .optional(),
+  closureContractV1: z
+    .object({
+      schema: z.literal('closure-contract-1'),
+      proposedHash: z.string(),
+      acceptedHash: z.string(),
+    })
+    .nullable()
+    .optional(),
+  applyReportV1Hash: z.string().nullable().optional(),
+  executionRecordV1Hash: z.string().nullable().optional(),
+  trunk: z
+    .object({
+      intent: z
+        .object({
+          primary: z.string().nullable().optional(),
+          successCriteria: z.array(z.string()).optional(),
+          nonGoals: z.array(z.string()).optional(),
+        })
+        .optional(),
+      stateDigest: z
+        .object({
+          facts: z.array(z.string()).optional(),
+          decisions: z.array(z.string()).optional(),
+          constraints: z.array(z.string()).optional(),
+          risks: z.array(z.string()).optional(),
+          assumptions: z.array(z.string()).optional(),
+          openLoops: z.array(z.string()).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+  continuation: z
+    .object({
+      nextActions: z
+        .array(
+          z.object({
+            code: z.string(),
+            message: z.string(),
+            expectedOutput: z.string().nullable().optional(),
+            domains: z.array(z.string()).optional(),
+          })
+        )
+        .optional(),
+      validationChecklist: z
+        .array(
+          z.object({
+            code: z.string(),
+            message: z.string(),
+            severity: z.enum(['must', 'should']).optional(),
+          })
+        )
+        .optional(),
+    })
+    .optional(),
+});
+type TransferBody = z.infer<typeof transferBodySchema>;
+type TransferNextActionBody = NonNullable<NonNullable<TransferBody['continuation']>['nextActions']>[number];
+
+function sendTransferInputError(res: Response, message: 'Invalid transfer package request' | 'Invalid domain in nextActions'): void {
+  res.status(400).json({
+    success: false,
+    error: {
+      code: 'E_INVALID_INPUT',
+      message,
+    },
+  });
+}
+
+function hasInvalidTransferDomain(nextActions: TransferNextActionBody[] | undefined): boolean {
+  if (!Array.isArray(nextActions)) return false;
+  for (const nextAction of nextActions) {
+    if (!Array.isArray(nextAction.domains)) continue;
+    for (const domain of nextAction.domains) {
+      if (!transferDomainSet.has(domain)) return true;
+    }
+  }
+  return false;
+}
+
+function normalizeTransferDomains(domains: string[] | undefined): TransferDomain[] {
+  if (!Array.isArray(domains)) return [];
+  const normalized = domains.filter((domain): domain is TransferDomain => transferDomainSet.has(domain));
+  return normalized;
+}
 
 router.post(
   '/import',
@@ -219,6 +325,82 @@ router.get(
     try {
       const data = await svc.exportPackage(userId, packageId);
       res.json({ success: true, data });
+    } catch (err: unknown) {
+      sendServiceError(res, extractErrorCode(err));
+    }
+  })
+);
+
+router.post(
+  '/:id/transfer',
+  requireAuth,
+  validate({ params: idParamSchema }),
+  asyncHandler(async (req, res) => {
+    const userId = req.userId!;
+    const packageId = paramToString((req.params as { id?: string | string[] }).id);
+    const parsed = transferBodySchema.safeParse(req.body ?? {});
+
+    if (!parsed.success) {
+      sendTransferInputError(res, 'Invalid transfer package request');
+      return;
+    }
+
+    const body = parsed.data as TransferBody;
+    if (hasInvalidTransferDomain(body.continuation?.nextActions)) {
+      sendTransferInputError(res, 'Invalid domain in nextActions');
+      return;
+    }
+
+    try {
+      const transferPackageV1 = await transferSvc.createTransferPackage(userId, packageId, {
+        revisionId: body.revisionId,
+        include: {
+          closureContractV1: body.include?.closureContractV1 === true,
+          applyReportV1Hash: body.include?.applyReportV1Hash === true,
+          executionRecordV1Hash: body.include?.executionRecordV1Hash === true,
+        },
+        closureContractV1: body.closureContractV1 ?? null,
+        applyReportV1Hash: typeof body.applyReportV1Hash === 'string' ? body.applyReportV1Hash : null,
+        executionRecordV1Hash: typeof body.executionRecordV1Hash === 'string' ? body.executionRecordV1Hash : null,
+        trunk: body.trunk
+          ? {
+              intent: body.trunk.intent
+                ? {
+                    primary: body.trunk.intent.primary ?? null,
+                    successCriteria: body.trunk.intent.successCriteria ?? [],
+                    nonGoals: body.trunk.intent.nonGoals ?? [],
+                  }
+                : undefined,
+              stateDigest: body.trunk.stateDigest
+                ? {
+                    facts: body.trunk.stateDigest.facts ?? [],
+                    decisions: body.trunk.stateDigest.decisions ?? [],
+                    constraints: body.trunk.stateDigest.constraints ?? [],
+                    risks: body.trunk.stateDigest.risks ?? [],
+                    assumptions: body.trunk.stateDigest.assumptions ?? [],
+                    openLoops: body.trunk.stateDigest.openLoops ?? [],
+                  }
+                : undefined,
+            }
+          : undefined,
+        continuation: body.continuation
+          ? {
+              nextActions: body.continuation.nextActions?.map((entry) => ({
+                code: entry.code,
+                message: entry.message,
+                expectedOutput: entry.expectedOutput ?? null,
+                domains: normalizeTransferDomains(entry.domains),
+              })),
+              validationChecklist: body.continuation.validationChecklist?.map((entry) => ({
+                code: entry.code,
+                message: entry.message,
+                severity: entry.severity ?? 'should',
+              })),
+            }
+          : undefined,
+      });
+
+      res.json({ transferPackageV1 });
     } catch (err: unknown) {
       sendServiceError(res, extractErrorCode(err));
     }
