@@ -124,7 +124,7 @@ type ValidationChecklistInput = {
   severity?: 'must' | 'should';
 };
 
-function makeTransferError(code: 'E_TRANSFER_INVALID' | 'E_TRANSFER_NON_JSON_SAFE', message: string): Error & { code: string } {
+function makeTransferError(code: 'E_TRANSFER_INVALID' | 'E_TRANSFER_NON_JSON_SAFE' | 'E_TRANSFER_HASH_MISMATCH', message: string): Error & { code: string } {
   const error = new Error(message) as Error & { code: string };
   error.code = code;
   return error;
@@ -403,4 +403,74 @@ export function buildTransferPackageV1(input: BuildTransferPackageV1Input): Tran
 
   assertJsonSafe(contract);
   return contract;
+}
+
+
+export function recomputeTransferPackageV1Hash(input: TransferPackageV1): string {
+  if (!input || input.schema !== 'transfer-package-1' || typeof input.transferHash !== 'string') {
+    throw makeTransferError('E_TRANSFER_INVALID', 'Transfer package input is invalid');
+  }
+
+  assertJsonSafe(input);
+
+  const rebuilt = buildTransferPackageV1({
+    identity: {
+      packageId: input.identity.packageId,
+      revisionId: input.identity.revisionId,
+      revisionHash: input.identity.revisionHash,
+      parentRevisionId: input.identity.parentRevisionId,
+    },
+    bindings: {
+      closureContractV1: input.bindings.closureContractV1,
+      applyReportV1Hash: input.bindings.applyReportV1Hash,
+      executionRecordV1Hash: input.bindings.executionRecordV1Hash,
+    },
+    trunk: {
+      intent: {
+        primary: input.trunk.intent.primary,
+        successCriteria: [...input.trunk.intent.successCriteria],
+        nonGoals: [...input.trunk.intent.nonGoals],
+      },
+      stateDigest: {
+        facts: [...input.trunk.stateDigest.facts],
+        decisions: [...input.trunk.stateDigest.decisions],
+        constraints: [...input.trunk.stateDigest.constraints],
+        risks: [...input.trunk.stateDigest.risks],
+        assumptions: [...input.trunk.stateDigest.assumptions],
+        openLoops: [...input.trunk.stateDigest.openLoops],
+      },
+    },
+    continuation: {
+      nextActions: input.continuation.nextActions.map((entry) => ({
+        code: entry.code,
+        message: entry.message,
+        expectedOutput: entry.expectedOutput,
+        domains: [...entry.domains],
+      })),
+      validationChecklist: input.continuation.validationChecklist.map((entry) => ({
+        code: entry.code,
+        message: entry.message,
+        severity: entry.severity,
+      })),
+    },
+    conflicts: input.conflicts.map((entry) => ({
+      domain: entry.domain,
+      code: entry.code,
+      key: entry.key,
+      path: entry.path,
+      message: entry.message,
+    })),
+  });
+
+  return rebuilt.transferHash;
+}
+
+export function verifyTransferPackageV1(input: TransferPackageV1): { ok: true; recomputedHash: string } {
+  const recomputedHash = recomputeTransferPackageV1Hash(input);
+
+  if (recomputedHash != input.transferHash) {
+    throw makeTransferError('E_TRANSFER_HASH_MISMATCH', 'Transfer package hash mismatch');
+  }
+
+  return { ok: true, recomputedHash };
 }

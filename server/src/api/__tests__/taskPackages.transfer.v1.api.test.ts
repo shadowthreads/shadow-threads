@@ -1,10 +1,12 @@
 import express from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { LineageBindingV1 } from '../../services/lineage-binding-v1';
 import type { TransferPackageV1 } from '../../services/transfer-package-v1';
 
 const mockState = vi.hoisted(() => ({
   createTransferPackage: vi.fn(),
+  buildLineageBindingForTransferFlowV1: vi.fn(),
 }));
 
 vi.mock('../../middleware', async () => {
@@ -27,6 +29,7 @@ vi.mock('../../services/task-package.service', () => {
 vi.mock('../../services/transfer-package.service', () => {
   class MockTransferPackageService {
     createTransferPackage = mockState.createTransferPackage;
+    buildLineageBindingForTransferFlowV1 = mockState.buildLineageBindingForTransferFlowV1;
   }
 
   return { TransferPackageService: MockTransferPackageService };
@@ -83,16 +86,46 @@ function buildTransferPackage(): TransferPackageV1 {
   };
 }
 
+function buildLineageBinding(transferHash: string, createdAt: string | null): LineageBindingV1 {
+  return {
+    schema: 'lineage-binding-1',
+    identity: {
+      packageId: 'pkg-1',
+      revisionId: '11111111-1111-4111-8111-111111111111',
+      revisionHash: 'rev-hash-1',
+      parentRevisionId: null,
+    },
+    bindings: {
+      transfer: {
+        schema: 'transfer-package-1',
+        transferHash,
+      },
+      closure: null,
+      execution: null,
+      handoff: null,
+    },
+    diagnostics: {
+      missing: ['closure', 'execution', 'handoff'],
+      notes: [],
+    },
+    createdAt,
+    lineageHash: 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
+  };
+}
+
 afterEach(() => {
   mockState.createTransferPackage.mockReset();
+  mockState.buildLineageBindingForTransferFlowV1.mockReset();
 });
 
 describe('taskPackages transfer v1 API', () => {
   const app = buildApp();
 
-  it('returns schema=transfer-package-1 and a 64-hex transferHash for a minimal request', async () => {
+  it('returns schema=transfer-package-1 and additive lineageBindingV1 for a minimal request', async () => {
     const transferPackageV1 = buildTransferPackage();
+    const lineageBindingV1 = buildLineageBinding(transferPackageV1.transferHash, null);
     mockState.createTransferPackage.mockResolvedValueOnce(transferPackageV1);
+    mockState.buildLineageBindingForTransferFlowV1.mockReturnValueOnce(lineageBindingV1);
 
     const response = await request(app)
       .post('/api/v1/task-packages/11111111-1111-4111-8111-111111111111/transfer')
@@ -101,13 +134,33 @@ describe('taskPackages transfer v1 API', () => {
     expect(response.status).toBe(200);
     expect(response.body.transferPackageV1.schema).toBe('transfer-package-1');
     expect(response.body.transferPackageV1.transferHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(response.body.lineageBindingV1.schema).toBe('lineage-binding-1');
+    expect(response.body.lineageBindingV1.lineageHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(response.body.lineageBindingV1.createdAt).toBeNull();
+    expect(response.body.lineageBindingV1.bindings.transfer.transferHash).toBe(response.body.transferPackageV1.transferHash);
+    expect(mockState.buildLineageBindingForTransferFlowV1).toHaveBeenCalledWith({
+      transferPackageV1,
+      include: {
+        closure: false,
+        execution: false,
+        handoff: false,
+      },
+      closureContractV1: null,
+      applyReportV1Hash: null,
+      executionRecordV1Hash: null,
+      createdAt: null,
+    });
   });
 
-  it('is deterministic for the same request twice', async () => {
+  it('is deterministic for the same request twice including lineageBindingV1', async () => {
     const transferPackageV1 = buildTransferPackage();
+    const lineageBindingV1 = buildLineageBinding(transferPackageV1.transferHash, null);
     mockState.createTransferPackage
       .mockResolvedValueOnce(transferPackageV1)
       .mockResolvedValueOnce(transferPackageV1);
+    mockState.buildLineageBindingForTransferFlowV1
+      .mockReturnValueOnce(lineageBindingV1)
+      .mockReturnValueOnce(lineageBindingV1);
 
     const body = {
       trunk: {
@@ -130,6 +183,8 @@ describe('taskPackages transfer v1 API', () => {
     expect(second.status).toBe(200);
     expect(first.body).toEqual(second.body);
     expect(first.body.transferPackageV1.transferHash).toBe(second.body.transferPackageV1.transferHash);
+    expect(first.body.lineageBindingV1.lineageHash).toBe(second.body.lineageBindingV1.lineageHash);
+    expect(first.body.lineageBindingV1.bindings.transfer.transferHash).toBe(first.body.transferPackageV1.transferHash);
   });
 
   it('binds closureContractV1 only when include.closureContractV1=true', async () => {
@@ -142,6 +197,9 @@ describe('taskPackages transfer v1 API', () => {
     const unbound = buildTransferPackage();
 
     mockState.createTransferPackage.mockResolvedValueOnce(bound).mockResolvedValueOnce(unbound);
+    mockState.buildLineageBindingForTransferFlowV1
+      .mockReturnValueOnce(buildLineageBinding(bound.transferHash, null))
+      .mockReturnValueOnce(buildLineageBinding(unbound.transferHash, null));
 
     const withBinding = await request(app)
       .post('/api/v1/task-packages/11111111-1111-4111-8111-111111111111/transfer')

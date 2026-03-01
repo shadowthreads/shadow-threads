@@ -356,3 +356,22 @@ model SystemConfig {
 
   updatedAt DateTime @updatedAt
 }
+
+
+model ArtifactStoreRecord {
+  id String @id @default(uuid())
+
+  schema String
+
+  packageId    String
+  revisionId   String?
+  revisionHash String?
+
+  bundleHash String @unique
+  payload    Json
+  createdAt  String?
+
+  @@index([packageId])
+  @@index([revisionId])
+  @@index([revisionHash])
+}
