@@ -1,5 +1,5 @@
-// Shadow Threads 数据库 Schema
-// 使用 Prisma ORM
+// Shadow Threads 閺佺増宓佹惔?Schema
+// 娴ｈ法鏁?Prisma ORM
 
 generator client {
   provider = "prisma-client-js"
@@ -11,7 +11,7 @@ datasource db {
 }
 
 // ============================================
-// 用户相关
+// 閻劍鍩涢惄绋垮彠
 // ============================================
 
 model User {
@@ -19,18 +19,18 @@ model User {
   email String? @unique
   name  String?
 
-  // 本地用户可以没有邮箱，用设备标识
+  // 閺堫剙婀撮悽銊﹀煕閸欘垯浜掑▽鈩冩箒闁喚顔堥敍宀€鏁ょ拋鎯ь槵閺嶅洩鐦?
   deviceId String? @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // 关联
+  // 閸忓疇浠?
   apiKeys    UserApiKey[]
   subthreads Subthread[]
   settings   UserSettings?
 
-  // ✅ StateSnapshot 反向关系（修复 Prisma P1012）
+  // 閴?StateSnapshot 閸欏秴鎮滈崗宕囬兇閿涘牅鎱ㄦ径?Prisma P1012閿?
   stateSnapshots StateSnapshot[]
   taskPackages   TaskPackage[]
 
@@ -43,14 +43,14 @@ model UserSettings {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // 默认 LLM 提供商
+  // 姒涙顓?LLM 閹绘劒绶甸崯?
   defaultProvider LLMProvider @default(OPENAI)
 
-  // UI 偏好
+  // UI 閸嬪繐銈?
   theme    String @default("auto") // auto, light, dark
   language String @default("zh-CN")
 
-  // 功能开关
+  // 閸旂喕鍏樺鈧崗?
   autoSummarize Boolean @default(true)
   saveHistory   Boolean @default(true)
 
@@ -58,7 +58,7 @@ model UserSettings {
   updatedAt DateTime @updatedAt
 }
 
-// 用户的 API Key 存储（加密存储）
+// 閻劍鍩涢惃?API Key 鐎涙ê鍋嶉敍鍫濆鐎靛棗鐡ㄩ崒顭掔礆
 model UserApiKey {
   id     String @id @default(uuid())
   userId String
@@ -66,11 +66,11 @@ model UserApiKey {
 
   provider LLMProvider
 
-  // API Key（加密存储）
+  // API Key閿涘牆濮炵€靛棗鐡ㄩ崒顭掔礆
   encryptedKey String
 
-  // 元数据
-  label     String? // 用户自定义标签
+  // 閸忓啯鏆熼幑?
+  label     String? // 閻劍鍩涢懛顏勭暰娑斿鐖ｇ粵?
   isDefault Boolean   @default(false)
   isValid   Boolean   @default(true)
   lastUsed  DateTime?
@@ -83,7 +83,7 @@ model UserApiKey {
 }
 
 // ============================================
-// LLM 提供商枚举
+// LLM 閹绘劒绶甸崯鍡樼亣娑?
 // ============================================
 
 enum LLMProvider {
@@ -91,88 +91,88 @@ enum LLMProvider {
   ANTHROPIC // Claude
   GOOGLE // Gemini
   GROQ // Groq
-  OLLAMA // 本地 Ollama
+  OLLAMA // 閺堫剙婀?Ollama
   DEEPSEEK // Deepseek
-  CUSTOM // 自定义 API
+  CUSTOM // 閼奉亜鐣炬稊?API
 }
 
 // ============================================
-// 子线程相关
+// 鐎涙劗鍤庣粙瀣祲閸?
 // ============================================
 
-// 主对话上下文（来源）
+// 娑撹顕拠婵呯瑐娑撳鏋冮敍鍫熸降濠ф劧绱?
 model SourceContext {
   id String @id @default(uuid())
 
-  // 来源平台
+  // 閺夈儲绨獮鍐插酱
   platform String // chatgpt, claude, gemini, etc.
 
-  // 原始对话信息
-  conversationId  String // 平台的对话 ID
-  conversationUrl String? // 对话 URL
+  // 閸樼喎顫愮€电鐦芥穱鈩冧紖
+  conversationId  String // 楠炲啿褰撮惃鍕嚠鐠?ID
+  conversationUrl String? // 鐎电鐦?URL
 
-  // 原始消息信息
-  messageId   String // 平台的消息 ID
+  // 閸樼喎顫愬☉鍫熶紖娣団剝浼?
+  messageId   String // 楠炲啿褰撮惃鍕Х閹?ID
   messageRole String // user, assistant
-  messageText String @db.Text // 完整消息文本
+  messageText String @db.Text // 鐎瑰本鏆ｅ☉鍫熶紖閺傚洦婀?
 
-  // 用户选中的片段
+  // 閻劍鍩涢柅澶夎厬閻ㄥ嫮澧栧▓?
   selectionText  String @db.Text
-  selectionStart Int? // 选中起始位置
-  selectionEnd   Int? // 选中结束位置
+  selectionStart Int? // 闁鑵戠挧宄邦潗娴ｅ秶鐤?
+  selectionEnd   Int? // 闁鑵戠紒鎾存将娴ｅ秶鐤?
 
-  // ✅ PR-B2：Context L1 元信息（窗口化上下文的 meta）
+  // 閴?PR-B2閿涙ontext L1 閸忓啩淇婇幁顖ょ礄缁愭褰涢崠鏍︾瑐娑撳鏋冮惃?meta閿?
   contextMeta Json?
 
-  contextMessages Json? // ✅ P0-A：W 通路实体数据落库
+  contextMessages Json? // 閴?P0-A閿涙瓙 闁俺鐭剧€圭偘缍嬮弫鐗堝祦閽€钘夌氨
 
   createdAt DateTime @default(now())
 
   taskPackages TaskPackage[]
 
-  // 关联
+  // 閸忓疇浠?
   subthread Subthread?
 
   @@index([platform, conversationId])
   @@index([platform, messageId])
 }
 
-// 影子子线程
+// 瑜板崬鐡欑€涙劗鍤庣粙?
 model Subthread {
   id String @id @default(uuid())
 
-  // 所属用户
+  // 閹碘偓鐏炵偟鏁ら幋?
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // 来源上下文
+  // 閺夈儲绨稉濠佺瑓閺?
   sourceContextId String        @unique
   sourceContext   SourceContext @relation(fields: [sourceContextId], references: [id], onDelete: Cascade)
 
-  // 使用的 LLM
+  // 娴ｈ法鏁ら惃?LLM
   provider LLMProvider
-  model    String // 具体模型，如 gpt-4, claude-3-opus
+  model    String // 閸忚渹缍嬪Ο鈥崇€烽敍灞筋洤 gpt-4, claude-3-opus
 
-  // 子线程标题（可自动生成）
+  // 鐎涙劗鍤庣粙瀣垼妫版﹫绱欓崣顖濆殰閸斻劎鏁撻幋鎰剁礆
   title String?
 
-  // 状态
+  // 閻樿埖鈧?
   status SubthreadStatus @default(ACTIVE)
 
-  // 上下文摘要（用于长对话压缩）
+  // 娑撳﹣绗呴弬鍥ㄦ喅鐟曚緤绱欓悽銊ょ艾闂€鍨嚠鐠囨繂甯囩紓鈺嬬礆
   summary String? @db.Text
 
-  // 统计
+  // 缂佺喕顓?
   messageCount Int @default(0)
   tokenCount   Int @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // 关联
+  // 閸忓疇浠?
   messages SubthreadMessage[]
 
-  // ✅ StateSnapshot 反向关系（修复 Prisma P1012）
+  // 閴?StateSnapshot 閸欏秴鎮滈崗宕囬兇閿涘牅鎱ㄦ径?Prisma P1012閿?
   stateSnapshots StateSnapshot[]
 
   @@index([userId, createdAt])
@@ -185,26 +185,26 @@ enum SubthreadStatus {
   DELETED
 }
 
-// 子线程消息
+// 鐎涙劗鍤庣粙瀣Х閹?
 model SubthreadMessage {
   id String @id @default(uuid())
 
   subthreadId String
   subthread   Subthread @relation(fields: [subthreadId], references: [id], onDelete: Cascade)
 
-  // 消息内容
+  // 濞戝牊浼呴崘鍛啇
   role    MessageRole
   content String      @db.Text
 
-  // Token 统计
+  // Token 缂佺喕顓?
   promptTokens     Int?
   completionTokens Int?
 
-  // 元数据
-  model        String? // 使用的模型
+  // 閸忓啯鏆熼幑?
+  model        String? // 娴ｈ法鏁ら惃鍕侀崹?
   finishReason String? // stop, length, etc.
 
-  // 错误信息（如果有）
+  // 闁挎瑨顕ゆ穱鈩冧紖閿涘牆顩ч弸婊勬箒閿?
   error String?
 
   createdAt DateTime @default(now())
@@ -219,36 +219,36 @@ enum MessageRole {
 }
 
 // ============================================
-// StateSnapshot（思考状态库 v1）
+// StateSnapshot閿涘牊鈧繆鈧啰濮搁幀浣哥氨 v1閿?
 // ============================================
 
 model StateSnapshot {
   id String @id @default(uuid())
 
-  // 归属用户
+  // 瑜版帒鐫橀悽銊﹀煕
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // 来源子线程（v1 可选）
+  // 閺夈儲绨€涙劗鍤庣粙瀣剁礄v1 閸欘垶鈧绱?
   subthreadId String?
   subthread   Subthread? @relation(fields: [subthreadId], references: [id], onDelete: SetNull)
 
-  // 核心：StateSnapshot v1 JSON
+  // 閺嶇绺鹃敍姝媡ateSnapshot v1 JSON
   snapshot Json
 
-  // 版本控制（仍然固定 v1，语义不变）
+  // 閻楀牊婀伴幒褍鍩楅敍鍫滅矝閻掕泛娴愮€?v1閿涘矁顕㈡稊澶夌瑝閸欐﹫绱?
   version String
 
-  /// 整条状态链的根（第一版 snapshot）
+  /// 閺佸瓨娼悩鑸碘偓渚€鎽奸惃鍕壌閿涘牏顑囨稉鈧悧?snapshot閿?
   rootId String?
 
-  /// 上一个 snapshot（用于回溯）
+  /// 娑撳﹣绔存稉?snapshot閿涘牏鏁ゆ禍搴℃礀濠ь垽绱?
   parentId String?
 
-  /// 第几次演化（0 = 初始）
+  /// 缁楊剙鍤戝▎鈩冪川閸栨牭绱? = 閸掓繂顫愰敍?
   rev Int @default(0)
 
-  /// 自引用关系
+  /// 閼奉亜绱╅悽銊ュ彠缁?
   parent   StateSnapshot?  @relation("StateSnapshotLineage", fields: [parentId], references: [id])
   children StateSnapshot[] @relation("StateSnapshotLineage")
 
@@ -262,7 +262,7 @@ model StateSnapshot {
   @@index([rootId])
   @@index([parentId])
 
-  // ✅ 工业幂等：同一个 parent 的同一个 rev 只能有一个 child
+  // 閴?瀹搞儰绗熼獮鍌滅搼閿涙艾鎮撴稉鈧稉?parent 閻ㄥ嫬鎮撴稉鈧稉?rev 閸欘亣鍏橀張澶夌娑?child
   @@unique([parentId, rev], name: "parentId_rev")
 }
 
@@ -272,30 +272,30 @@ model TaskPackage {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // 可选关联：从哪个 snapshot 生成（但 package 本身不依赖它）
+  // 閸欘垶鈧鍙ч懕鏃撶窗娴犲骸鎽㈡稉?snapshot 閻㈢喐鍨氶敍鍫滅稻 package 閺堫剝闊╂稉宥勭贩鐠ф牕鐣犻敍?
   sourceSnapshotId String?
   sourceSnapshot   StateSnapshot? @relation(fields: [sourceSnapshotId], references: [id], onDelete: SetNull)
 
-  // 可选关联：从哪个 sourceContext 生成（用于追溯证据）
+  // 閸欘垶鈧鍙ч懕鏃撶窗娴犲骸鎽㈡稉?sourceContext 閻㈢喐鍨氶敍鍫㈡暏娴滃氦鎷峰┃顖濈槈閹诡噯绱?
   sourceContextId String?
   sourceContext   SourceContext? @relation(fields: [sourceContextId], references: [id], onDelete: SetNull)
 
-  // 人类可读
+  // 娴滆櫣琚崣顖濐嚢
   title       String?
   description String? @db.Text
 
-  // 状态
+  // 閻樿埖鈧?
   status TaskPackageStatus @default(ACTIVE)
 
-  // 当前活跃 revision（指针）
-  // ✅ 一对一语义：一个 revision 最多只能被一个 package 指向
+  // 瑜版挸澧犲ú鏄忕┈ revision閿涘牊瀵氶柦鍫礆
+  // 閴?娑撯偓鐎甸€涚鐠囶厺绠熼敍姘娑?revision 閺堚偓婢舵艾褰ч懗鍊燁潶娑撯偓娑?package 閹稿洤鎮?
   currentRevisionId String? @unique
   currentRevision   TaskPackageRevision? @relation("PackageCurrentRevision", fields: [currentRevisionId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // 反向关系
+  // 閸欏秴鎮滈崗宕囬兇
   revisions TaskPackageRevision[] @relation("PackageRevisions")
 
   @@index([userId, createdAt])
@@ -314,25 +314,25 @@ model TaskPackageRevision {
   parent           TaskPackageRevision?  @relation("RevisionParent", fields: [parentRevisionId], references: [id], onDelete: SetNull)
   children         TaskPackageRevision[] @relation("RevisionParent")
 
-  // ✅ 反向：被哪个 TaskPackage 作为 currentRevision 指向（Prisma 需要对称关系）
+  // 閴?閸欏秴鎮滈敍姘愁潶閸濐亙閲?TaskPackage 娴ｆ粈璐?currentRevision 閹稿洤鎮滈敍鍦isma 闂団偓鐟曚礁顕粔鏉垮彠缁紮绱?
   currentFor TaskPackage? @relation("PackageCurrentRevision")
 
-  // 版本号：0,1,2...
+  // 閻楀牊婀伴崣鍑ょ窗0,1,2...
   rev Int @default(0)
 
-  // 核心：迁移包 JSON（建议结构：manifest + state + evidence + constraints + decisions + interfaces + risks）
+  // 閺嶇绺鹃敍姘崇讣缁夎瀵?JSON閿涘牆缂撶拋顔剧波閺嬪嫸绱癿anifest + state + evidence + constraints + decisions + interfaces + risks閿?
   payload Json
 
   // Deterministic revision identity (sha256 of canonicalized payload)
   revisionHash String
 
-  // 校验/摘要（工业字段）
+  // 閺嶏繝鐛?閹芥顩﹂敍鍫濅紣娑撴艾鐡у▓纰夌礆
   schemaVersion String @default("tpkg-0.1")
   summary       String? @db.Text
 
   createdAt DateTime @default(now())
 
-  // 幂等/并发：同一个 package 的同一个 rev 只能有一条
+  // 楠炲倻鐡?楠炶泛褰傞敍姘倱娑撯偓娑?package 閻ㄥ嫬鎮撴稉鈧稉?rev 閸欘亣鍏橀張澶夌閺?
   @@unique([packageId, rev])
   @@unique([packageId, revisionHash])
   @@index([packageId, createdAt])
@@ -347,7 +347,7 @@ enum TaskPackageStatus {
 }
 
 // ============================================
-// 系统配置
+// 缁崵绮洪柊宥囩枂
 // ============================================
 
 model SystemConfig {
@@ -375,4 +375,101 @@ model ArtifactStoreRecord {
   @@index([packageId])
   @@index([revisionId])
   @@index([revisionHash])
+}
+
+model RevisionNode {
+  revisionHash String @id @db.Char(64)
+
+  packageId          String
+  parentRevisionHash String? @db.Char(64)
+
+  author    String
+  message   String
+  createdBy String
+  timestamp DateTime
+  source    String
+
+  metadata Json
+
+  createdAt DateTime @default(now())
+
+  parent   RevisionNode?  @relation("RevisionParent", fields: [parentRevisionHash], references: [revisionHash], onDelete: SetNull)
+  children RevisionNode[] @relation("RevisionParent")
+
+  artifacts  RevisionArtifact[]
+  executions ExecutionRecord[]
+
+  @@index([packageId])
+  @@index([parentRevisionHash])
+  @@map("revision_nodes")
+}
+
+model RevisionArtifact {
+  revisionHash String @db.Char(64)
+  bundleHash   String @db.Char(64)
+  role         String
+
+  revision RevisionNode @relation(fields: [revisionHash], references: [revisionHash], onDelete: Cascade)
+
+  @@id([revisionHash, bundleHash])
+  @@index([bundleHash])
+  @@map("revision_artifacts")
+}
+
+model ExecutionRecord {
+  executionId String @id @default(uuid()) @db.Uuid
+
+  packageId    String
+  revisionHash String @db.Char(64)
+
+  provider String
+  model    String
+
+  promptHash String @db.Char(64)
+
+  parameters Json @db.JsonB
+
+  resultHash String @db.Char(64)
+
+  status String
+
+  startedAt  DateTime @db.Timestamptz(6)
+  finishedAt DateTime @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  revision RevisionNode @relation(fields: [revisionHash], references: [revisionHash], onDelete: Restrict)
+
+  inputs  ExecutionInput[]
+  outputs ExecutionOutput[]
+
+  @@index([packageId])
+  @@index([revisionHash])
+  @@index([promptHash])
+  @@index([status])
+  @@map("execution_records")
+}
+
+model ExecutionInput {
+  executionId String @db.Uuid
+  bundleHash  String @db.Char(64)
+  role        String
+
+  execution ExecutionRecord @relation(fields: [executionId], references: [executionId], onDelete: Cascade)
+
+  @@id([executionId, bundleHash])
+  @@index([bundleHash])
+  @@map("execution_inputs")
+}
+
+model ExecutionOutput {
+  executionId String @db.Uuid
+  bundleHash  String @db.Char(64)
+  role        String
+
+  execution ExecutionRecord @relation(fields: [executionId], references: [executionId], onDelete: Cascade)
+
+  @@id([executionId, bundleHash])
+  @@index([bundleHash])
+  @@map("execution_outputs")
 }

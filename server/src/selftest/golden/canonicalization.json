@@ -1,0 +1,78 @@
+﻿{
+  "schema": "golden-canonicalization-1",
+  "vectors": [
+    {
+      "id": "key-order",
+      "inputSpec": {
+        "b": 1,
+        "a": 2,
+        "nested": {
+          "z": 1,
+          "y": 2
+        }
+      },
+      "expectedCanonical": "{\"a\":2,\"b\":1,\"nested\":{\"y\":2,\"z\":1}}"
+    },
+    {
+      "id": "unicode-normalization",
+      "inputSpec": {
+        "text": "Cafe\u0301"
+      },
+      "expectedCanonical": "{\"text\":\"Caf\u00e9\"}"
+    },
+    {
+      "id": "undefined-removal",
+      "inputSpec": {
+        "obj": {
+          "keep": 1,
+          "drop": {
+            "$st": "undefined"
+          }
+        },
+        "arr": [
+          1,
+          {
+            "$st": "undefined"
+          },
+          2
+        ]
+      },
+      "expectedCanonical": "{\"arr\":[1,2],\"obj\":{\"keep\":1}}"
+    },
+    {
+      "id": "neg-zero-normalization",
+      "inputSpec": {
+        "negZero": {
+          "$st": "negzero"
+        },
+        "normal": 0
+      },
+      "expectedCanonical": "{\"negZero\":0,\"normal\":0}"
+    },
+    {
+      "id": "nan-reject",
+      "inputSpec": {
+        "value": {
+          "$st": "nan"
+        }
+      },
+      "expectedError": "ERR_PAYLOAD_STRUCTURE_LIMIT"
+    },
+    {
+      "id": "infinity-reject",
+      "inputSpec": {
+        "value": {
+          "$st": "infinity"
+        }
+      },
+      "expectedError": "ERR_PAYLOAD_STRUCTURE_LIMIT"
+    },
+    {
+      "id": "unsafe-key-reject",
+      "inputSpec": {
+        "__proto__": {}
+      },
+      "expectedError": "ERR_PAYLOAD_UNSAFE_KEY"
+    }
+  ]
+}

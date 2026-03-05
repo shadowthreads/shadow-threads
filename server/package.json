@@ -1,7 +1,7 @@
-{
+﻿{
   "name": "shadow-threads-server",
   "version": "0.1.0",
-  "description": "Shadow Threads 后端服务",
+  "description": "Shadow Threads 閸氬海顏張宥呭",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -34,6 +34,7 @@
     "@anthropic-ai/sdk": "^0.30.0",
     "@google/generative-ai": "^0.21.0",
     "@prisma/client": "^5.22.0",
+    "adm-zip": "^0.5.16",
     "axios": "^1.13.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -69,3 +70,6 @@
     "node": ">=18.0.0"
   }
 }
+
+
+
