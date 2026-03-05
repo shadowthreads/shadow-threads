@@ -367,10 +367,11 @@ model ArtifactStoreRecord {
   revisionId   String?
   revisionHash String?
 
-  bundleHash String @unique
+  bundleHash String @db.VarChar(64)
   payload    Json
-  createdAt  String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
 
+  @@unique([packageId, bundleHash])
   @@index([packageId])
   @@index([revisionId])
   @@index([revisionHash])
