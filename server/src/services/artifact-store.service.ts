@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { canonicalizeJson, computeBundleHash } from '../lib/artifact-hash';
+import { IdentityGuardError, assertHashMatch } from '../lib/identity-guards';
 import { JsonSanitizeError, sanitizeJsonPayload } from '../lib/json-sanitize';
 import { prisma } from '../utils';
 import {
@@ -13,6 +14,7 @@ const BUNDLE_HASH_PATTERN = /^[0-9a-f]{64}$/;
 const ARTIFACT_VALIDATION_MESSAGE = 'Artifact input is invalid';
 const ARTIFACT_CONFLICT_MESSAGE = 'Artifact already exists with different payload';
 const ARTIFACT_PAYLOAD_INVALID_MESSAGE = 'payload contains non-JSON-safe value';
+const ARTIFACT_HASH_MISMATCH_MESSAGE = 'Artifact hash mismatch';
 
 export class ArtifactValidationError extends Error {
   code = 'E_ARTIFACT_VALIDATION';
@@ -29,6 +31,15 @@ export class ArtifactConflictError extends Error {
   constructor(message = ARTIFACT_CONFLICT_MESSAGE) {
     super(message);
     this.name = 'ArtifactConflictError';
+  }
+}
+
+export class ArtifactHashMismatchError extends Error {
+  code = 'ERR_ARTIFACT_HASH_MISMATCH';
+
+  constructor(message = ARTIFACT_HASH_MISMATCH_MESSAGE) {
+    super(message);
+    this.name = 'ArtifactHashMismatchError';
   }
 }
 
@@ -245,7 +256,17 @@ export class ArtifactStoreService {
       revisionHash: identity.revisionHash,
       payload: payload.sanitizedPayload,
     });
-    const bundleHash = input.bundleHash ? normalizeBundleHash(input.bundleHash) : computedBundleHash;
+    let bundleHash = computedBundleHash;
+    if (input.bundleHash) {
+      try {
+        bundleHash = assertHashMatch(normalizeBundleHash(input.bundleHash), computedBundleHash);
+      } catch (error) {
+        if (error instanceof IdentityGuardError && error.code === 'ERR_ARTIFACT_HASH_MISMATCH') {
+          throw new ArtifactHashMismatchError();
+        }
+        throw error;
+      }
+    }
 
     const where = {
       packageId_bundleHash: {

@@ -2,6 +2,9 @@
 
 import { canonicalizeJson } from './artifact-hash';
 
+const MESSAGE_MIGRATION_INVALID_INPUT = 'Migration package input is invalid';
+const MESSAGE_MIGRATION_INVALID_MANIFEST = 'Migration package manifest is invalid';
+
 export const MIGRATION_PACKAGE_SCHEMA = 'migration.package.v1';
 export const MIGRATION_PACKAGE_META_SCHEMA = 'migration.package.meta.v1';
 export const REVISION_CARRIER_SCHEMA = 'artifact.revision.node.v1';
@@ -61,9 +64,15 @@ function compareStrings(a: string, b: string): number {
   return 0;
 }
 
+function createMigrationPackageError(code: string, message: string): Error & { code: string } {
+  const error = new Error(message) as Error & { code: string };
+  error.code = code;
+  return error;
+}
+
 function normalizeRequiredString(value: unknown): string {
   if (typeof value !== 'string' || value.length === 0) {
-    throw new Error('Migration package input is invalid');
+    throw new Error(MESSAGE_MIGRATION_INVALID_INPUT);
   }
   return value;
 }
@@ -71,7 +80,7 @@ function normalizeRequiredString(value: unknown): string {
 function normalizeNullableString(value: unknown): string | null {
   if (typeof value === 'string') return value;
   if (value === null || typeof value === 'undefined') return null;
-  throw new Error('Migration package input is invalid');
+  throw new Error(MESSAGE_MIGRATION_INVALID_INPUT);
 }
 
 function normalizeReferences(references: unknown): ArtifactReference[] {
@@ -85,7 +94,7 @@ function normalizeReferences(references: unknown): ArtifactReference[] {
   const out: ArtifactReference[] = [];
   for (const item of references) {
     if (!item || typeof item !== 'object') {
-      throw new Error('Migration package input is invalid');
+      throw new Error(MESSAGE_MIGRATION_INVALID_INPUT);
     }
     const entry = item as { bundleHash?: unknown; role?: unknown };
     out.push({
@@ -147,6 +156,50 @@ export function buildManifest(input: {
   };
 }
 
+function normalizeNonNegativeInteger(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw createMigrationPackageError('ERR_MIGRATION_INVALID_MANIFEST', MESSAGE_MIGRATION_INVALID_MANIFEST);
+  }
+  return value;
+}
+
+function validateManifest(input: unknown): MigrationManifestV1 {
+  if (!input || typeof input !== 'object') {
+    throw createMigrationPackageError('ERR_MIGRATION_INVALID_MANIFEST', MESSAGE_MIGRATION_INVALID_MANIFEST);
+  }
+
+  const manifest = input as {
+    schema?: unknown;
+    rootRevisionHash?: unknown;
+    artifactCount?: unknown;
+    revisionCount?: unknown;
+    createdAt?: unknown;
+    bundleHashAlgo?: unknown;
+    revisionHashAlgo?: unknown;
+    protocol?: unknown;
+  };
+
+  if (
+    manifest.schema !== MIGRATION_PACKAGE_SCHEMA ||
+    manifest.bundleHashAlgo !== 'sha256' ||
+    manifest.revisionHashAlgo !== 'sha256' ||
+    manifest.protocol !== 'shadow-protocol-v1'
+  ) {
+    throw createMigrationPackageError('ERR_MIGRATION_INVALID_MANIFEST', MESSAGE_MIGRATION_INVALID_MANIFEST);
+  }
+
+  return {
+    schema: MIGRATION_PACKAGE_SCHEMA,
+    rootRevisionHash: normalizeRequiredString(manifest.rootRevisionHash).toLowerCase(),
+    artifactCount: normalizeNonNegativeInteger(manifest.artifactCount),
+    revisionCount: normalizeNonNegativeInteger(manifest.revisionCount),
+    createdAt: normalizeRequiredString(manifest.createdAt),
+    bundleHashAlgo: 'sha256',
+    revisionHashAlgo: 'sha256',
+    protocol: 'shadow-protocol-v1',
+  };
+}
+
 export function buildMetadata(input?: Partial<MigrationMetadataV1>): MigrationMetadataV1 {
   return {
     schema: MIGRATION_PACKAGE_META_SCHEMA,
@@ -185,13 +238,13 @@ export function readMigrationPackageZip(zipPath: string): {
 
   for (const entry of entries) {
     if (entry.isDirectory) {
-      throw new Error('Migration package input is invalid');
+      throw new Error(MESSAGE_MIGRATION_INVALID_INPUT);
     }
     if (entry.entryName.includes('/') || entry.entryName.includes('\\')) {
-      throw new Error('Migration package input is invalid');
+      throw new Error(MESSAGE_MIGRATION_INVALID_INPUT);
     }
     if (!allowed.has(entry.entryName)) {
-      throw new Error('Migration package input is invalid');
+      throw new Error(MESSAGE_MIGRATION_INVALID_INPUT);
     }
     byName.set(entry.entryName, entry);
   }
@@ -205,7 +258,7 @@ export function readMigrationPackageZip(zipPath: string): {
   const metadata = JSON.parse(zip.readAsText(byName.get('metadata.json') as AdmZipEntry, 'utf8')) as MigrationMetadataV1;
 
   return {
-    manifest: buildManifest(manifest),
+    manifest: validateManifest(manifest),
     artifactsJsonl,
     metadata: buildMetadata(metadata),
   };

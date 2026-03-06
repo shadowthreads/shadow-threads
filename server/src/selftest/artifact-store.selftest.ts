@@ -1,5 +1,5 @@
 import { computeBundleHash } from '../lib/artifact-hash';
-import { ArtifactConflictError, ArtifactStoreService } from '../services/artifact-store.service';
+import { ArtifactHashMismatchError, ArtifactStoreService } from '../services/artifact-store.service';
 import { prisma } from '../utils';
 
 export async function runArtifactStoreSelftest(): Promise<void> {
@@ -73,7 +73,7 @@ export async function runArtifactStoreSelftest(): Promise<void> {
     throw new Error('selftest_failed');
   }
 
-  let conflictSeen = false;
+  let mismatchSeen = false;
   try {
     await service.storeArtifactBundle({
       schema,
@@ -88,14 +88,14 @@ export async function runArtifactStoreSelftest(): Promise<void> {
       bundleHash,
     });
   } catch (error) {
-    if (error instanceof ArtifactConflictError) {
-      conflictSeen = true;
+    if (error instanceof ArtifactHashMismatchError) {
+      mismatchSeen = true;
     } else {
       throw error;
     }
   }
 
-  if (!conflictSeen) {
+  if (!mismatchSeen) {
     throw new Error('selftest_failed');
   }
 

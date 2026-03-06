@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "shadow-threads-server",
   "version": "0.1.0",
   "description": "Shadow Threads 閸氬海顏張宥呭",
@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "selftest:fast": "node dist/selftest/protocol.selftest.js && node dist/selftest/revision.selftest.js && node dist/selftest/execution.selftest.js && node dist/selftest/identity-boundary.selftest.js && node dist/selftest/http-api.selftest.js",
+    "selftest:core": "npm run selftest:fast && node dist/selftest/artifact-store.selftest.js && node dist/selftest/migration.selftest.js",
+    "selftest:full": "npm run selftest:core && node dist/selftest/http-api.e2e.js && node dist/selftest/http-api.error.e2e.js",
     "start": "node dist/index.js",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:migrate": "prisma migrate dev --schema prisma/schema.prisma",
@@ -70,6 +73,3 @@
     "node": ">=18.0.0"
   }
 }
-
-
-

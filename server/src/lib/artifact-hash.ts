@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { assertSafeObjectKey } from './identity-guards';
 
 type CanonicalJsonValue =
   | null
@@ -48,9 +49,10 @@ function normalizeForCanonicalJson(value: unknown): CanonicalJsonValue {
     throw new Error('Invalid JSON value for canonicalization');
   }
 
-  const normalizedObject: { [key: string]: CanonicalJsonValue } = {};
+  const normalizedObject = Object.create(null) as { [key: string]: CanonicalJsonValue };
   const keys = Object.keys(value).sort(compareStrings);
   for (const key of keys) {
+    assertSafeObjectKey(key);
     normalizedObject[key] = normalizeForCanonicalJson(value[key]);
   }
 

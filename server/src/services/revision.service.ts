@@ -11,10 +11,12 @@ const BUNDLE_HASH_PATTERN = /^[0-9a-f]{64}$/;
 const ERR_REVISION_INVALID_INPUT = 'ERR_REVISION_INVALID_INPUT';
 const ERR_REVISION_PARENT_NOT_FOUND = 'ERR_REVISION_PARENT_NOT_FOUND';
 const ERR_ARTIFACT_NOT_FOUND = 'ERR_ARTIFACT_NOT_FOUND';
+const ERR_REVISION_PARENT_PACKAGE_MISMATCH = 'ERR_REVISION_PARENT_PACKAGE_MISMATCH';
 
 const MESSAGE_REVISION_INVALID_INPUT = 'Revision input is invalid';
 const MESSAGE_REVISION_PARENT_NOT_FOUND = 'Revision parent not found';
 const MESSAGE_ARTIFACT_NOT_FOUND = 'Artifact not found';
+const MESSAGE_REVISION_PARENT_PACKAGE_MISMATCH = 'Revision parent package mismatch';
 
 export type RevisionSource = 'human' | 'ai' | 'migration' | 'system';
 
@@ -375,6 +377,9 @@ export class RevisionService {
       if (!parent) {
         throw new RevisionServiceError(ERR_REVISION_PARENT_NOT_FOUND, MESSAGE_REVISION_PARENT_NOT_FOUND);
       }
+      if (parent.packageId !== packageId) {
+        throw new RevisionServiceError(ERR_REVISION_PARENT_PACKAGE_MISMATCH, MESSAGE_REVISION_PARENT_PACKAGE_MISMATCH);
+      }
     }
 
     for (const artifact of artifacts) {
@@ -430,6 +435,7 @@ export const REVISION_ERROR_CODES = {
   ERR_REVISION_INVALID_INPUT,
   ERR_REVISION_PARENT_NOT_FOUND,
   ERR_ARTIFACT_NOT_FOUND,
+  ERR_REVISION_PARENT_PACKAGE_MISMATCH,
 } as const;
 
 

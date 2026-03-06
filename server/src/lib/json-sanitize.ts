@@ -1,3 +1,4 @@
+import { IdentityGuardError, assertSafeObjectKey } from './identity-guards';
 const PAYLOAD_NON_JSON_SAFE_MESSAGE = 'payload contains non-JSON-safe value';
 const REMOVE_VALUE = Symbol('remove_json_value');
 
@@ -82,8 +83,16 @@ function sanitizeInternal(value: unknown, seen: WeakSet<object>): Sanitized {
   }
   seen.add(value);
 
-  const output: Record<string, unknown> = {};
+  const output = Object.create(null) as Record<string, unknown>;
   for (const key of Object.keys(value)) {
+    try {
+      assertSafeObjectKey(key);
+    } catch (error) {
+      if (error instanceof IdentityGuardError) {
+        throw makeSanitizeError();
+      }
+      throw error;
+    }
     const sanitized = sanitizeInternal((value as Record<string, unknown>)[key], seen);
     if (sanitized !== REMOVE_VALUE) {
       output[key] = sanitized;

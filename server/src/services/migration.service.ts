@@ -22,10 +22,12 @@ const HASH_PATTERN = /^[0-9a-f]{64}$/;
 const ERR_MIGRATION_INVALID_INPUT = 'ERR_MIGRATION_INVALID_INPUT';
 const ERR_MIGRATION_CLOSURE_INCOMPLETE = 'ERR_MIGRATION_CLOSURE_INCOMPLETE';
 const ERR_MIGRATION_VERIFY_MISMATCH = 'ERR_MIGRATION_VERIFY_MISMATCH';
+const ERR_MIGRATION_IDENTITY_MISMATCH = 'ERR_MIGRATION_IDENTITY_MISMATCH';
 
 const MESSAGE_MIGRATION_INVALID_INPUT = 'Migration package input is invalid';
 const MESSAGE_MIGRATION_CLOSURE_INCOMPLETE = 'Migration closure is incomplete';
 const MESSAGE_MIGRATION_VERIFY_MISMATCH = 'Migration package verification failed';
+const MESSAGE_MIGRATION_IDENTITY_MISMATCH = 'Migration package identity mismatch';
 
 export type MigrationRevisionRecord = {
   revisionHash: string;
@@ -239,6 +241,20 @@ function parseRevisionCarrier(bundle: ArtifactBundleLike): MigrationRevisionReco
   };
 }
 
+function closeRevisionCarrierIdentity(bundle: ArtifactBundleLike, revision: MigrationRevisionRecord): MigrationRevisionRecord {
+  if (bundle.identity.packageId !== revision.packageId) {
+    throw new MigrationServiceError(ERR_MIGRATION_IDENTITY_MISMATCH, MESSAGE_MIGRATION_IDENTITY_MISMATCH);
+  }
+
+  return {
+    revisionHash: revision.revisionHash,
+    packageId: bundle.identity.packageId,
+    parentRevisionHash: revision.parentRevisionHash,
+    artifacts: revision.artifacts.map((artifact) => ({ bundleHash: artifact.bundleHash, role: artifact.role })),
+    metadata: revision.metadata,
+  };
+}
+
 function validateRevisionRecord(revision: MigrationRevisionRecord): void {
   const recomputed = computeRevisionHash({
     packageId: revision.packageId,
@@ -378,7 +394,7 @@ function validateParsedPackage(parsed: {
     allArtifacts.push({ bundleHash, bundle: normalized });
 
     if (normalized.schema === REVISION_CARRIER_SCHEMA) {
-      const revision = parseRevisionCarrier(normalized);
+      const revision = closeRevisionCarrierIdentity(normalized, parseRevisionCarrier(normalized));
       validateRevisionRecord(revision);
       revisionsByHash.set(revision.revisionHash, revision);
       revisionArtifacts.push({ bundleHash, bundle: normalized });
@@ -599,6 +615,7 @@ export const MIGRATION_ERROR_CODES = {
   ERR_MIGRATION_INVALID_INPUT,
   ERR_MIGRATION_CLOSURE_INCOMPLETE,
   ERR_MIGRATION_VERIFY_MISMATCH,
+  ERR_MIGRATION_IDENTITY_MISMATCH,
 } as const;
 
 
