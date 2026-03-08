@@ -1,0 +1,11 @@
+{
+  "schema": "demo.task",
+  "identity": {
+    "packageId": "demo-package"
+  },
+  "payload": {
+    "task": "build log parser",
+    "input": "Example log data"
+  },
+  "references": []
+}

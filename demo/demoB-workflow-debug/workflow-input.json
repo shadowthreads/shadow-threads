@@ -1,0 +1,21 @@
+{
+  "schema": "demo.workflow.input",
+  "identity": {
+    "packageId": "demo-debug-package"
+  },
+  "payload": {
+    "workflow": "deterministic debug demo",
+    "inputBatch": [
+      18,
+      21,
+      "oops",
+      34
+    ],
+    "expectedSteps": [
+      "retrieve data",
+      "transform data",
+      "generate output"
+    ]
+  },
+  "references": []
+}

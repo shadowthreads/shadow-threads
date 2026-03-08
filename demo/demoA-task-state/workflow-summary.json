@@ -1,0 +1,24 @@
+{
+  "task": "build log parser",
+  "status": "complete",
+  "steps": [
+    {
+      "name": "Load data",
+      "status": "done"
+    },
+    {
+      "name": "Parse logs",
+      "status": "done"
+    },
+    {
+      "name": "Generate summary",
+      "status": "done"
+    }
+  ],
+  "summary": {
+    "lineCount": 4,
+    "warningCount": 1,
+    "errorCount": 1,
+    "latestMessage": "2026-03-09T09:03:00Z INFO summary generated"
+  }
+}

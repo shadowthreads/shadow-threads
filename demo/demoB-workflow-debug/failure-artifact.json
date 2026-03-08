@@ -1,0 +1,24 @@
+{
+  "schema": "demo.workflow.failure",
+  "identity": {
+    "packageId": "demo-debug-package"
+  },
+  "payload": {
+    "workflow": "deterministic debug demo",
+    "failedStep": 2,
+    "stepName": "transform data",
+    "inputBatch": [
+      18,
+      21,
+      "oops",
+      34
+    ],
+    "error": "transform step expected integers but received 'oops'"
+  },
+  "references": [
+    {
+      "bundleHash": "d83a0e407a928b1b55534d4fdfa7862c86008feeb03620ee1120e896d40b96f7",
+      "role": "workflow_input"
+    }
+  ]
+}
