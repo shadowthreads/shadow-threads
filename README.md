@@ -21,6 +21,10 @@ Shadow Threads gives you four durable objects:
 
 The local server exposes these objects through `/api/v1`. The Python SDK, CLI, demos, and MCP server all use that same boundary.
 
+## Demo
+
+This repository contains the core Shadow Threads system: protocol, server runtime, SDK, MCP integration, and local demos. If you want the quickest way to see the product behavior in practice, use the focused public demo repository for a deterministic AI-assisted coding workflow: https://github.com/ZetongDu/shadowthreads-demo-coding-workflow. That demo shows AI coding workflow state, revision lineage, execution replay, and replay verification in one place.
+
 ## Install instructions
 
 ### Prerequisites
@@ -350,3 +354,5 @@ npm run selftest:fast
 npm run selftest:core
 npm run selftest:full
 ```
+
+
