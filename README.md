@@ -288,5 +288,7 @@ Redis is used for runtime coordination and execution tracking.
 
 For selftest tiers and development-oriented validation commands, see [`docs/development.md`](docs/development.md).
 
+If Shadowthreads is useful, consider giving it a star ⭐
+
 
 
