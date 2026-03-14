@@ -316,7 +316,7 @@ Exposed tools include artifact capture, revision creation, execution recording, 
 
 ```mermaid
 flowchart LR
-    A[Python SDK / CLI / MCP] --> B[/api/v1 Local HTTP API]
+    A[Python SDK / CLI / MCP] --> B["/api/v1 Local HTTP API"]
     B --> C[Artifact Store]
     B --> D[Revision DAG]
     B --> E[Execution Records]
