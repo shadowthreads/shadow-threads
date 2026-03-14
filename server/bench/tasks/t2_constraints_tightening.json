@@ -1,0 +1,56 @@
+{
+  "taskId": "t2_constraints_tightening",
+  "category": "T2",
+  "description": "Tighten planning constraints and align risk impact.",
+  "baseState": {
+    "facts": [
+      { "id": "f_budget_cycle", "subject": "budget", "predicate": "cycle", "value": "quarterly", "confidence": 0.8 },
+      { "id": "f_staff_pool", "subject": "staffing", "predicate": "pool", "value": "shared", "confidence": 0.72 }
+    ],
+    "decisions": [
+      { "id": "d_interview_count", "question": "Interview count", "answer": "20", "rationale": "baseline sample", "confidence": 0.7 },
+      { "id": "d_scope_depth", "question": "Scope depth", "answer": "broad", "rationale": "coverage first", "confidence": 0.65 }
+    ],
+    "constraints": [
+      { "id": "c_timebox", "scope": "process", "rule": "Timebox research to 4 weeks", "strength": "medium" },
+      { "id": "c_spend", "scope": "policy", "rule": "Spend under 30k", "strength": "high" }
+    ],
+    "risks": [
+      { "id": "r_overrun", "title": "Schedule overrun", "probability": "medium", "impact": "medium", "mitigation": "weekly review" },
+      { "id": "r_cost", "title": "Cost overrun", "probability": "low", "impact": "high", "mitigation": "budget gate" }
+    ],
+    "assumptions": [
+      { "id": "a_vendor_slot", "statement": "Vendor slot stays reserved", "confidence": 0.6 },
+      { "id": "a_participant_rate", "statement": "Participant response stable", "confidence": 0.7 }
+    ]
+  },
+  "targetState": {
+    "facts": [
+      { "id": "f_budget_cycle", "subject": "budget", "predicate": "cycle", "value": "monthly", "confidence": 0.83 },
+      { "id": "f_staff_pool", "subject": "staffing", "predicate": "pool", "value": "shared", "confidence": 0.72 }
+    ],
+    "decisions": [
+      { "id": "d_interview_count", "question": "Interview count", "answer": "18", "rationale": "timebox alignment", "confidence": 0.72 },
+      { "id": "d_scope_depth", "question": "Scope depth", "answer": "focused", "rationale": "priority use-cases only", "confidence": 0.7 }
+    ],
+    "constraints": [
+      { "id": "c_timebox", "scope": "process", "rule": "Timebox research to 3 weeks", "strength": "high" },
+      { "id": "c_spend", "scope": "policy", "rule": "Spend under 25k", "strength": "high" }
+    ],
+    "risks": [
+      { "id": "r_overrun", "title": "Schedule overrun", "probability": "medium", "impact": "medium", "mitigation": "weekly review" },
+      { "id": "r_cost", "title": "Cost overrun", "probability": "low", "impact": "medium", "mitigation": "budget gate" }
+    ],
+    "assumptions": [
+      { "id": "a_vendor_slot", "statement": "Vendor slot stays reserved", "confidence": 0.6 },
+      { "id": "a_participant_rate", "statement": "Participant response stable", "confidence": 0.7 }
+    ]
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": true,
+    "maxDistanceCountsSum": 0,
+    "requiredDomainsModified": ["facts", "decisions", "constraints", "risks"]
+  },
+  "runConfig": { "repetitions": 15 }
+}

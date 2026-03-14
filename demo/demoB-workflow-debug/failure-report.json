@@ -1,0 +1,12 @@
+{
+  "workflow": "deterministic debug demo",
+  "failedStep": 2,
+  "stepName": "transform data",
+  "inputBatch": [
+    18,
+    21,
+    "oops",
+    34
+  ],
+  "error": "transform step expected integers but received 'oops'"
+}

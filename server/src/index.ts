@@ -15,6 +15,10 @@ import {
   autoRegister 
 } from './middleware';
 import apiRouter from './api';
+import artifactRoutes from './routes/artifact.routes';
+import revisionRoutes from './routes/revision.routes';
+import executionRoutes from './routes/execution.routes';
+import migrationRoutes from './routes/migration.routes';
 
 console.log("[BOOT] DATABASE_URL =", process.env.DATABASE_URL);
 
@@ -89,6 +93,10 @@ async function bootstrap() {
   // ============================================
   
   app.use(config.apiPrefix, apiRouter);
+  app.use(`${config.apiPrefix}/artifacts`, artifactRoutes);
+  app.use(`${config.apiPrefix}/revisions`, revisionRoutes);
+  app.use(`${config.apiPrefix}/executions`, executionRoutes);
+  app.use(`${config.apiPrefix}/migration`, migrationRoutes);
   
   // 兼容旧版本的简单 API（用于扩展初期测试）
   app.post('/subthread/ask', async (req, res, next) => {

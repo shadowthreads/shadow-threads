@@ -1,0 +1,54 @@
+{
+  "taskId": "t1_assumption_derived_stability",
+  "category": "T1",
+  "description": "Assumptions derived from facts remain deterministic.",
+  "baseState": {
+    "facts": [
+      { "id": "f_asm_team_capacity", "category": "assumption", "subject": "team", "predicate": "capacity", "value": "2 squads", "confidence": 0.7 },
+      { "id": "f_asm_security_review", "type": "assumption", "subject": "security", "predicate": "review-window", "value": "3 days", "confidence": 0.6 },
+      { "id": "f_known_scope", "subject": "scope", "predicate": "known-items", "value": "80%", "confidence": 0.75 }
+    ],
+    "decisions": [
+      { "id": "d_scope_lock", "question": "Lock scope now?", "answer": "yes", "rationale": "reduce late churn", "confidence": 0.74 },
+      { "id": "d_release_gate", "question": "Gate release on review?", "answer": "yes", "rationale": "risk control", "confidence": 0.78 }
+    ],
+    "constraints": [
+      { "id": "c_review", "scope": "process", "rule": "Security review required before release", "strength": "high" },
+      { "id": "c_scope", "scope": "process", "rule": "Scope changes require sign-off", "strength": "medium" }
+    ],
+    "risks": [
+      { "id": "r_scope_creep", "title": "Scope creep", "probability": "medium", "impact": "high", "mitigation": "change board" },
+      { "id": "r_review_delay", "title": "Review delay", "probability": "medium", "impact": "medium", "mitigation": "early booking" }
+    ],
+    "assumptions": []
+  },
+  "targetState": {
+    "facts": [
+      { "id": "f_asm_team_capacity", "category": "assumption", "subject": "team", "predicate": "capacity", "value": "3 squads", "confidence": 0.8 },
+      { "id": "f_asm_security_review", "type": "assumption", "subject": "security", "predicate": "review-window", "value": "2 days", "confidence": 0.7 },
+      { "id": "f_asm_uat", "category": "assumption", "subject": "uat", "predicate": "availability", "value": "always-on", "confidence": 0.65 },
+      { "id": "f_known_scope", "subject": "scope", "predicate": "known-items", "value": "85%", "confidence": 0.79 }
+    ],
+    "decisions": [
+      { "id": "d_scope_lock", "question": "Lock scope now?", "answer": "yes", "rationale": "reduce late churn", "confidence": 0.74 },
+      { "id": "d_release_gate", "question": "Gate release on review?", "answer": "yes", "rationale": "risk control", "confidence": 0.78 }
+    ],
+    "constraints": [
+      { "id": "c_review", "scope": "process", "rule": "Security review required before release", "strength": "high" },
+      { "id": "c_scope", "scope": "process", "rule": "Scope changes require sign-off", "strength": "medium" }
+    ],
+    "risks": [
+      { "id": "r_scope_creep", "title": "Scope creep", "probability": "medium", "impact": "high", "mitigation": "change board" },
+      { "id": "r_review_delay", "title": "Review delay", "probability": "medium", "impact": "medium", "mitigation": "early booking" }
+    ],
+    "assumptions": []
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": true,
+    "maxDistanceCountsSum": 0,
+    "requiredDomainsModified": ["facts", "assumptions"],
+    "requiredAssumptionKeys": ["f_asm_team_capacity"]
+  },
+  "runConfig": { "repetitions": 15 }
+}

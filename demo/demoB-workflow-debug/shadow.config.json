@@ -1,0 +1,4 @@
+{
+    "server":  "http://localhost:3001",
+    "workspace":  ".shadow"
+}

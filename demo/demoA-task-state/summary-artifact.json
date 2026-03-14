@@ -1,0 +1,36 @@
+{
+  "schema": "demo.task.summary",
+  "identity": {
+    "packageId": "demo-package"
+  },
+  "payload": {
+    "task": "build log parser",
+    "status": "complete",
+    "steps": [
+      {
+        "name": "Load data",
+        "status": "done"
+      },
+      {
+        "name": "Parse logs",
+        "status": "done"
+      },
+      {
+        "name": "Generate summary",
+        "status": "done"
+      }
+    ],
+    "summary": {
+      "lineCount": 4,
+      "warningCount": 1,
+      "errorCount": 1,
+      "latestMessage": "2026-03-09T09:03:00Z INFO summary generated"
+    }
+  },
+  "references": [
+    {
+      "bundleHash": "69f6d56c0837b8a0689247cd9035d45104ffb6e2ee97f919ab0a0bd6777c9de3",
+      "role": "source_task"
+    }
+  ]
+}

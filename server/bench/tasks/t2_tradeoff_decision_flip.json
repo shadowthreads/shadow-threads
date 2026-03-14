@@ -1,0 +1,57 @@
+{
+  "taskId": "t2_tradeoff_decision_flip",
+  "category": "T2",
+  "description": "Flip strategic tradeoff decision under tighter constraints.",
+  "baseState": {
+    "facts": [
+      { "id": "f_priority", "subject": "priority", "predicate": "goal", "value": "speed", "confidence": 0.72 },
+      { "id": "f_budget", "subject": "budget", "predicate": "status", "value": "tight", "confidence": 0.85 }
+    ],
+    "decisions": [
+      { "id": "d_tradeoff", "question": "Optimize for speed or quality", "answer": "speed", "rationale": "market pressure", "confidence": 0.74 },
+      { "id": "d_release_scope", "question": "Release scope", "answer": "full", "rationale": "single campaign", "confidence": 0.6 }
+    ],
+    "constraints": [
+      { "id": "c_quality", "scope": "policy", "rule": "Defect escape rate under 2%", "strength": "high" },
+      { "id": "c_budget_hard", "scope": "policy", "rule": "Spend increase must stay under 3%", "strength": "high" }
+    ],
+    "risks": [
+      { "id": "r_quality", "title": "Quality degradation", "probability": "high", "impact": "high", "mitigation": "extra QA shift" },
+      { "id": "r_budget", "title": "Budget overrun", "probability": "medium", "impact": "high", "mitigation": "scope cut trigger" }
+    ],
+    "assumptions": [
+      { "id": "a_market_window", "statement": "Market window closes in two months", "confidence": 0.8 },
+      { "id": "a_qa_capacity", "statement": "QA can add one shift", "confidence": 0.58 }
+    ]
+  },
+  "targetState": {
+    "facts": [
+      { "id": "f_priority", "subject": "priority", "predicate": "goal", "value": "quality", "confidence": 0.78 },
+      { "id": "f_budget", "subject": "budget", "predicate": "status", "value": "tight", "confidence": 0.85 }
+    ],
+    "decisions": [
+      { "id": "d_tradeoff", "question": "Optimize for speed or quality", "answer": "quality", "rationale": "risk profile unacceptable", "confidence": 0.81 },
+      { "id": "d_release_scope", "question": "Release scope", "answer": "phased", "rationale": "protect quality target", "confidence": 0.77 }
+    ],
+    "constraints": [
+      { "id": "c_quality", "scope": "policy", "rule": "Defect escape rate under 1.5%", "strength": "high" },
+      { "id": "c_budget_hard", "scope": "policy", "rule": "Spend increase must stay under 3%", "strength": "high" }
+    ],
+    "risks": [
+      { "id": "r_quality", "title": "Quality degradation", "probability": "medium", "impact": "medium", "mitigation": "extra QA shift" },
+      { "id": "r_budget", "title": "Budget overrun", "probability": "medium", "impact": "high", "mitigation": "scope cut trigger" }
+    ],
+    "assumptions": [
+      { "id": "a_market_window", "statement": "Market window closes in two months", "confidence": 0.8 },
+      { "id": "a_qa_capacity", "statement": "QA can add one shift", "confidence": 0.58 }
+    ]
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": true,
+    "maxDistanceCountsSum": 0,
+    "requiredDomainsModified": ["facts", "decisions", "constraints", "risks"],
+    "requiredDecisionKeys": ["d_tradeoff"]
+  },
+  "runConfig": { "repetitions": 15 }
+}

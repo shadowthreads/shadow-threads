@@ -1,41 +1,84 @@
-# Dependencies
+# ==============================
+# Node / TypeScript
+# ==============================
+
 node_modules/
 .pnp
 .pnp.js
 
-# Build outputs
 dist/
 build/
 extension/dist/
 *.tsbuildinfo
 
+# ==============================
+# Python
+# ==============================
+
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+*.egg-info/
+.eggs/
+
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# ==============================
 # Environment
+# ==============================
+
 .env
 .env.local
 .env.*.local
 
+# ==============================
 # Logs
+# ==============================
+
 logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# ==============================
 # IDE
+# ==============================
+
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
 
+# ==============================
 # OS
+# ==============================
+
 .DS_Store
 Thumbs.db
 
+# ==============================
 # Test
+# ==============================
+
 coverage/
 .nyc_output/
 
+# ==============================
 # Temp
+# ==============================
+
 tmp/
 temp/
+
+.vite-test/
+server/bench/out/

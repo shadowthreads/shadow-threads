@@ -1,0 +1,56 @@
+{
+  "taskId": "t1_constraint_violation_attempt",
+  "category": "T1",
+  "description": "Introduce a risk that violates a probability threshold constraint.",
+  "baseState": {
+    "facts": [
+      { "id": "f_release_target", "subject": "release", "predicate": "target", "value": "q2", "confidence": 0.8 },
+      { "id": "f_staffing", "subject": "team", "predicate": "staffing", "value": "tight", "confidence": 0.7 }
+    ],
+    "decisions": [
+      { "id": "d_cut_scope", "question": "Scope trim needed?", "answer": "no", "rationale": "baseline scope retained", "confidence": 0.65 },
+      { "id": "d_rollout", "question": "Rollout strategy", "answer": "phased", "rationale": "reduce blast radius", "confidence": 0.82 }
+    ],
+    "constraints": [
+      { "id": "c_prob", "scope": "policy", "rule": "Max risk probability is low", "maxProbability": "low", "strength": "high" },
+      { "id": "c_impact", "scope": "policy", "rule": "Max risk impact is medium", "maxImpact": "medium", "strength": "high" }
+    ],
+    "risks": [
+      { "id": "r_vendor", "title": "Vendor SLA drift", "probability": "low", "impact": "medium", "mitigation": "dual vendor review" },
+      { "id": "r_hiring", "title": "Hiring delay", "probability": "low", "impact": "low", "mitigation": "contract support" }
+    ],
+    "assumptions": [
+      { "id": "a_vendor", "statement": "Primary vendor remains responsive", "confidence": 0.7 },
+      { "id": "a_ops", "statement": "Ops team can absorb rollout load", "confidence": 0.65 }
+    ]
+  },
+  "targetState": {
+    "facts": [
+      { "id": "f_release_target", "subject": "release", "predicate": "target", "value": "q2", "confidence": 0.8 },
+      { "id": "f_staffing", "subject": "team", "predicate": "staffing", "value": "tight", "confidence": 0.7 }
+    ],
+    "decisions": [
+      { "id": "d_cut_scope", "question": "Scope trim needed?", "answer": "no", "rationale": "baseline scope retained", "confidence": 0.65 },
+      { "id": "d_rollout", "question": "Rollout strategy", "answer": "phased", "rationale": "reduce blast radius", "confidence": 0.82 }
+    ],
+    "constraints": [
+      { "id": "c_prob", "scope": "policy", "rule": "Max risk probability is low", "maxProbability": "low", "strength": "high" },
+      { "id": "c_impact", "scope": "policy", "rule": "Max risk impact is medium", "maxImpact": "medium", "strength": "high" }
+    ],
+    "risks": [
+      { "id": "r_vendor", "title": "Vendor SLA drift", "probability": "high", "impact": "high", "mitigation": "dual vendor review" },
+      { "id": "r_hiring", "title": "Hiring delay", "probability": "low", "impact": "low", "mitigation": "contract support" }
+    ],
+    "assumptions": [
+      { "id": "a_vendor", "statement": "Primary vendor remains responsive", "confidence": 0.7 },
+      { "id": "a_ops", "statement": "Ops team can absorb rollout load", "confidence": 0.65 }
+    ]
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": false,
+    "maxDistanceCountsSum": 0,
+    "requiredDomainsModified": ["risks"]
+  },
+  "runConfig": { "repetitions": 15 }
+}

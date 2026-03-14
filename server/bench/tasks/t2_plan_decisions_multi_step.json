@@ -1,0 +1,56 @@
+{
+  "taskId": "t2_plan_decisions_multi_step",
+  "category": "T2",
+  "description": "Planning task with multi-step decision refinement.",
+  "baseState": {
+    "facts": [
+      { "id": "f_goal", "subject": "goal", "predicate": "primary", "value": "launch pilot", "confidence": 0.85 },
+      { "id": "f_deadline", "subject": "timeline", "predicate": "pilot-date", "value": "2026-06", "confidence": 0.7 }
+    ],
+    "decisions": [
+      { "id": "d_phase_count", "question": "How many phases?", "answer": "2", "rationale": "initial outline", "confidence": 0.6 },
+      { "id": "d_research_depth", "question": "Research depth", "answer": "medium", "rationale": "balanced effort", "confidence": 0.65 }
+    ],
+    "constraints": [
+      { "id": "c_staff", "scope": "process", "rule": "Plan assumes 3 contributors", "strength": "medium" },
+      { "id": "c_review_window", "scope": "process", "rule": "Review every 2 weeks", "strength": "high" }
+    ],
+    "risks": [
+      { "id": "r_alignment", "title": "Stakeholder misalignment", "probability": "medium", "impact": "medium", "mitigation": "weekly sync" },
+      { "id": "r_scope", "title": "Scope expansion", "probability": "medium", "impact": "high", "mitigation": "decision log" }
+    ],
+    "assumptions": [
+      { "id": "a_participation", "statement": "Stakeholders attend weekly sync", "confidence": 0.7 },
+      { "id": "a_data_access", "statement": "Research data access approved", "confidence": 0.68 }
+    ]
+  },
+  "targetState": {
+    "facts": [
+      { "id": "f_goal", "subject": "goal", "predicate": "primary", "value": "launch pilot", "confidence": 0.85 },
+      { "id": "f_deadline", "subject": "timeline", "predicate": "pilot-date", "value": "2026-06", "confidence": 0.7 }
+    ],
+    "decisions": [
+      { "id": "d_phase_count", "question": "How many phases?", "answer": "3", "rationale": "added hardening phase", "confidence": 0.78 },
+      { "id": "d_research_depth", "question": "Research depth", "answer": "high", "rationale": "stakeholder need clarity", "confidence": 0.74 }
+    ],
+    "constraints": [
+      { "id": "c_staff", "scope": "process", "rule": "Plan assumes 3 contributors", "strength": "medium" },
+      { "id": "c_review_window", "scope": "process", "rule": "Review every 2 weeks", "strength": "high" }
+    ],
+    "risks": [
+      { "id": "r_alignment", "title": "Stakeholder misalignment", "probability": "low", "impact": "medium", "mitigation": "weekly sync + notes" },
+      { "id": "r_scope", "title": "Scope expansion", "probability": "medium", "impact": "high", "mitigation": "decision log" }
+    ],
+    "assumptions": [
+      { "id": "a_participation", "statement": "Stakeholders attend weekly sync", "confidence": 0.7 },
+      { "id": "a_data_access", "statement": "Research data access approved", "confidence": 0.68 }
+    ]
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": true,
+    "maxDistanceCountsSum": 0,
+    "requiredDomainsModified": ["decisions", "risks"]
+  },
+  "runConfig": { "repetitions": 15 }
+}

@@ -1,0 +1,58 @@
+{
+  "taskId": "t1_decision_answer_change",
+  "category": "T1",
+  "description": "Update one engineering decision answer while preserving other domains.",
+  "baseState": {
+    "facts": [
+      { "id": "f_auth_scope", "subject": "auth", "predicate": "scope", "value": "api+web", "confidence": 0.9 },
+      { "id": "f_api_lang", "subject": "api", "predicate": "language", "value": "typescript", "confidence": 0.95 }
+    ],
+    "decisions": [
+      { "id": "d_auth", "question": "Token strategy", "answer": "jwt", "rationale": "existing compatibility", "confidence": 0.7 },
+      { "id": "d_cache", "question": "Cache layer", "answer": "redis", "rationale": "shared infra", "confidence": 0.8 }
+    ],
+    "constraints": [
+      { "id": "c_plaintext", "scope": "technical", "rule": "No plaintext secrets", "strength": "high" },
+      { "id": "c_latency", "scope": "technical", "rule": "P95 latency below 250ms", "strength": "medium" }
+    ],
+    "risks": [
+      { "id": "r_timeline", "title": "Timeline slip", "probability": "medium", "impact": "high", "mitigation": "buffer sprint" },
+      { "id": "r_perf", "title": "Performance regression", "probability": "low", "impact": "medium", "mitigation": "load test gate" }
+    ],
+    "assumptions": [
+      { "id": "a_backend", "statement": "Backend team is staffed", "confidence": 0.8 },
+      { "id": "a_budget", "statement": "Budget supports one extra sprint", "confidence": 0.6 }
+    ]
+  },
+  "targetState": {
+    "facts": [
+      { "id": "f_auth_scope", "subject": "auth", "predicate": "scope", "value": "api+web", "confidence": 0.9 },
+      { "id": "f_api_lang", "subject": "api", "predicate": "language", "value": "typescript", "confidence": 0.95 }
+    ],
+    "decisions": [
+      { "id": "d_auth", "question": "Token strategy", "answer": "session-token", "rationale": "aligns with gateway refresh flow", "confidence": 0.82 },
+      { "id": "d_cache", "question": "Cache layer", "answer": "redis", "rationale": "shared infra", "confidence": 0.8 }
+    ],
+    "constraints": [
+      { "id": "c_plaintext", "scope": "technical", "rule": "No plaintext secrets", "strength": "high" },
+      { "id": "c_latency", "scope": "technical", "rule": "P95 latency below 250ms", "strength": "medium" }
+    ],
+    "risks": [
+      { "id": "r_timeline", "title": "Timeline slip", "probability": "medium", "impact": "high", "mitigation": "buffer sprint" },
+      { "id": "r_perf", "title": "Performance regression", "probability": "low", "impact": "medium", "mitigation": "load test gate" }
+    ],
+    "assumptions": [
+      { "id": "a_backend", "statement": "Backend team is staffed", "confidence": 0.8 },
+      { "id": "a_budget", "statement": "Budget supports one extra sprint", "confidence": 0.6 }
+    ]
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": true,
+    "maxDistanceCountsSum": 0,
+    "domainMustNotChange": ["facts", "constraints", "risks", "assumptions"],
+    "requiredDomainsModified": ["decisions"],
+    "requiredDecisionKeys": ["d_auth", "d_cache"]
+  },
+  "runConfig": { "repetitions": 15 }
+}

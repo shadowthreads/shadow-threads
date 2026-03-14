@@ -1,0 +1,29 @@
+﻿{
+  "schema": "golden-hash-1",
+  "vectors": [
+    {
+      "id": "artifact-bundle-basic",
+      "bundleSpec": {
+        "schema": "artifact-bundle-1",
+        "identity": {
+          "packageId": "pkg-1",
+          "revisionId": "rev-1",
+          "revisionHash": "rev-hash-1"
+        },
+        "payload": {
+          "z": 1,
+          "a": "Cafe\u0301",
+          "arr": [
+            1,
+            {
+              "b": 2,
+              "a": 1
+            }
+          ]
+        }
+      },
+      "expectedCanonical": "{\"identity\":{\"packageId\":\"pkg-1\",\"revisionHash\":\"rev-hash-1\",\"revisionId\":\"rev-1\"},\"payload\":{\"a\":\"Caf\u00e9\",\"arr\":[1,{\"a\":1,\"b\":2}],\"z\":1},\"schema\":\"artifact-bundle-1\"}",
+      "expectedBundleHash": "58cd7a0cd38a6335d0c6243b44c312cb75c34790e3240192f8f19e196c0ef4e5"
+    }
+  ]
+}

@@ -1,0 +1,220 @@
+{
+  "taskId": "t3_conflict_add_existing",
+  "category": "T3",
+  "description": "Conflict add-existing plus valid add in same domain to separate best_effort and strict behavior.",
+  "baseState": {
+    "facts": [
+      {
+        "id": "f_scope",
+        "subject": "project",
+        "predicate": "scope",
+        "value": "phase1",
+        "confidence": 0.9
+      },
+      {
+        "id": "f_budget",
+        "subject": "project",
+        "predicate": "budget",
+        "value": "100",
+        "confidence": 0.8
+      }
+    ],
+    "decisions": [
+      {
+        "id": "d_strategy",
+        "question": "Delivery strategy",
+        "answer": "incremental",
+        "rationale": "low risk",
+        "confidence": 0.8
+      }
+    ],
+    "constraints": [
+      {
+        "id": "c_budget",
+        "scope": "policy",
+        "rule": "Budget must stay under 120",
+        "strength": "high"
+      }
+    ],
+    "risks": [
+      {
+        "id": "r_overrun",
+        "title": "Cost overrun",
+        "probability": "medium",
+        "impact": "high",
+        "mitigation": "weekly review"
+      }
+    ],
+    "assumptions": [
+      {
+        "id": "a_team",
+        "statement": "Team capacity remains stable",
+        "confidence": 0.7
+      }
+    ]
+  },
+  "targetState": {
+    "facts": [
+      {
+        "id": "f_scope",
+        "subject": "project",
+        "predicate": "scope",
+        "value": "phase1",
+        "confidence": 0.9
+      },
+      {
+        "id": "f_budget",
+        "subject": "project",
+        "predicate": "budget",
+        "value": "100",
+        "confidence": 0.8
+      },
+      {
+        "id": "f_kpi",
+        "subject": "project",
+        "predicate": "kpi",
+        "value": "on_track",
+        "confidence": 0.72
+      }
+    ],
+    "decisions": [
+      {
+        "id": "d_strategy",
+        "question": "Delivery strategy",
+        "answer": "incremental",
+        "rationale": "low risk",
+        "confidence": 0.8
+      }
+    ],
+    "constraints": [
+      {
+        "id": "c_budget",
+        "scope": "policy",
+        "rule": "Budget must stay under 120",
+        "strength": "high"
+      }
+    ],
+    "risks": [
+      {
+        "id": "r_overrun",
+        "title": "Cost overrun",
+        "probability": "medium",
+        "impact": "high",
+        "mitigation": "weekly review"
+      }
+    ],
+    "assumptions": [
+      {
+        "id": "a_team",
+        "statement": "Team capacity remains stable",
+        "confidence": 0.7
+      }
+    ]
+  },
+  "coreStubDelta": {
+    "facts": {
+      "added": [
+        {
+          "key": "",
+          "unit": {
+            "id": "f_scope",
+            "subject": "project",
+            "predicate": "scope",
+            "value": "phase1",
+            "confidence": 0.9
+          }
+        },
+        {
+          "key": "",
+          "unit": {
+            "id": "f_kpi",
+            "subject": "project",
+            "predicate": "kpi",
+            "value": "on_track",
+            "confidence": 0.72
+          }
+        }
+      ],
+      "removed": [],
+      "modified": []
+    },
+    "decisions": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "constraints": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "risks": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "assumptions": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    }
+  },
+  "llmStubDelta": {
+    "facts": {
+      "added": [
+        {
+          "key": "",
+          "unit": {
+            "id": "f_scope",
+            "subject": "project",
+            "predicate": "scope",
+            "value": "phase1",
+            "confidence": 0.9
+          }
+        },
+        {
+          "key": "",
+          "unit": {
+            "id": "f_kpi",
+            "subject": "project",
+            "predicate": "kpi",
+            "value": "on_track",
+            "confidence": 0.72
+          }
+        }
+      ],
+      "removed": [],
+      "modified": []
+    },
+    "decisions": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "constraints": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "risks": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    },
+    "assumptions": {
+      "added": [],
+      "removed": [],
+      "modified": []
+    }
+  },
+  "targetAssertions": {
+    "mustEqualTargetHash": true,
+    "mustHaveNoConflicts": false,
+    "requiredDomainsModified": [
+      "facts"
+    ]
+  },
+  "runConfig": {
+    "repetitions": 15
+  }
+}

@@ -17,6 +17,9 @@ import { parseLLMDelta } from './llm-delta-parser';
 import { buildApplyReportV1, type ApplyReportV1 } from './apply-report-v1';
 import { buildExecutionRecordV1, type ExecutionRecordV1 } from './execution-record-v1';
 import { replayExecutionRecordV1 } from './execution-replay.service';
+import { planDeltaClosureV1, type ClosureRejected, type ClosureSuggestion } from './delta-closure-planner';
+import { DEFAULT_RISK_POLICY_V1, normalizeRiskPolicyV1, type RiskPolicyV1 } from './delta-risk-policy';
+import { buildClosureContractV1, type ClosureContractV1 } from './closure-contract-v1';
 
 export type CreatePackageFromSnapshotInput = {
   title?: string;
@@ -47,6 +50,11 @@ type ApplyExecutionOptions = {
     fromRevisionId: string;
     toRevisionId: string;
     mode?: TransitionMode;
+  };
+  riskPolicy?: RiskPolicyV1;
+  taskProfile?: {
+    name: string;
+    riskPolicy?: RiskPolicyV1;
   };
   audit?: {
     record?: boolean;
@@ -106,6 +114,38 @@ type ApplyReportV2 = {
     stateHashBefore: string;
     stateHashAfter: string;
     delta?: SemanticDelta;
+    closure?: {
+      schema: 'delta-closure-plan-1';
+      policy: {
+        schema: 'risk-policy-1';
+        strict: {
+          requirePostApplyConflictsZero: true;
+          fieldLevelModify: 'off' | 'on';
+          dependencyScope: 'same_domain' | 'cross_domain';
+          priority: 'explainability' | 'acceptance';
+          targetAcceptanceRatio: number;
+        };
+      };
+      acceptedSummary?: ReturnType<typeof summarizeDelta>;
+      rejectedCount: number;
+      rejectedPreview?: ClosureRejected[];
+      rejected: ClosureRejected[];
+      suggestions: ClosureSuggestion[];
+      suggestionDiagnostics: {
+        suggestionCount: number;
+        coveredRejectedCount: number;
+        blockedByCoveredCount: number;
+      };
+      contractV1: ClosureContractV1;
+      diagnostics: {
+        candidateCount: number;
+        acceptedCount: number;
+        rejectedCount: number;
+        maxClosureSizeRatio: number;
+        blockedByRate: number;
+        closureViolationFlag: boolean;
+      };
+    };
   };
   v1?: ApplyReportV1;
   executionRecordV1?: ExecutionRecordV1;
@@ -124,6 +164,7 @@ type ErrCode =
   | 'E_LLM_DELTA_CONFLICT'
   | 'E_REPLAY_MISMATCH'
   | 'E_REPLAY_UNSUPPORTED'
+  | 'E_RISK_POLICY_INVALID'
   | 'CONFLICT_RETRY_EXHAUSTED';
 
 type Ok<T> = { ok: true; data: T };
@@ -138,6 +179,7 @@ const SERVICE_ERROR_CODES = new Set<ErrCode>([
   'E_LLM_DELTA_CONFLICT',
   'E_REPLAY_MISMATCH',
   'E_REPLAY_UNSUPPORTED',
+  'E_RISK_POLICY_INVALID',
   'CONFLICT_RETRY_EXHAUSTED',
 ]);
 
@@ -162,6 +204,7 @@ function normalizeServiceError(err: unknown): ErrCode {
     if (rawCode === 'E_LLM_DELTA_CONFLICT') return 'E_LLM_DELTA_CONFLICT';
     if (rawCode === 'E_REPLAY_MISMATCH') return 'E_REPLAY_MISMATCH';
     if (rawCode === 'E_REPLAY_UNSUPPORTED') return 'E_REPLAY_UNSUPPORTED';
+    if (rawCode === 'E_RISK_POLICY_INVALID') return 'E_RISK_POLICY_INVALID';
     if (typeof rawCode === 'string' && rawCode.startsWith('LLM_')) return 'INVALID_INPUT';
     if (typeof rawCode === 'string' && rawCode.startsWith('E_LLM_DELTA_')) return 'INVALID_INPUT';
     if (typeof rawCode === 'string' && rawCode.startsWith('E_EXECUTION_RECORD_')) return 'INVALID_INPUT';
@@ -230,6 +273,74 @@ function mergeTransitionFindings(base: TransitionFinding[], postApply: Transitio
   const postApplyFinding = buildPostApplyFinding(postApply);
   const next = postApplyFinding ? [...base, postApplyFinding] : [...base];
   return next.sort(sortTransitionFinding);
+}
+
+function compareLiteral(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
+function sortClosureRejected(a: ClosureRejected, b: ClosureRejected): number {
+  return (
+    (TRANSITION_DOMAIN_RANK.get(a.domain) ?? 0) - (TRANSITION_DOMAIN_RANK.get(b.domain) ?? 0) ||
+    compareLiteral(a.key ?? '', b.key ?? '') ||
+    compareLiteral(a.path ?? '\uffff', b.path ?? '\uffff') ||
+    compareLiteral(a.op, b.op) ||
+    compareLiteral(a.reasonCode, b.reasonCode)
+  );
+}
+
+function sortClosureSuggestion(a: ClosureSuggestion, b: ClosureSuggestion): number {
+  return (
+    compareLiteral(a.actionType, b.actionType) ||
+    compareLiteral(a.code, b.code) ||
+    compareLiteral(stableHash(a.payload), stableHash(b.payload)) ||
+    compareLiteral(a.message, b.message) ||
+    compareLiteral(a.riskLevel ?? '', b.riskLevel ?? '')
+  );
+}
+
+function sortReportV1Finding(
+  a: ApplyReportV1['findings'][number],
+  b: ApplyReportV1['findings'][number]
+): number {
+  return (
+    compareLiteral(a.code, b.code) ||
+    compareLiteral(a.message ?? '', b.message ?? '') ||
+    (a.count ?? 0) - (b.count ?? 0) ||
+    compareLiteral((a.domains ?? []).join(','), (b.domains ?? []).join(','))
+  );
+}
+
+function buildClosureDiagnosticsFindings(
+  diagnostics: {
+    candidateCount: number;
+    acceptedCount: number;
+    rejectedCount: number;
+    maxClosureSizeRatio: number;
+    blockedByRate: number;
+    closureViolationFlag: boolean;
+  },
+  hasPostApplyConflict: boolean
+): ApplyReportV1['findings'] {
+  const findings: ApplyReportV1['findings'] = [
+    { code: 'CLOSURE_CANDIDATE_COUNT', count: diagnostics.candidateCount },
+    { code: 'CLOSURE_ACCEPTED_COUNT', count: diagnostics.acceptedCount },
+    { code: 'CLOSURE_REJECTED_COUNT', count: diagnostics.rejectedCount },
+    { code: 'CLOSURE_MAX_CLOSURE_SIZE_RATIO', count: diagnostics.maxClosureSizeRatio },
+    { code: 'CLOSURE_BLOCKED_BY_RATE', count: diagnostics.blockedByRate },
+  ];
+
+  if (diagnostics.closureViolationFlag) {
+    findings.push({ code: 'CLOSURE_VIOLATION_FLAG', count: 1 });
+  }
+
+  if (hasPostApplyConflict) {
+    findings.push({ code: 'CLOSURE_POST_APPLY_CONFLICT' });
+  }
+
+  return findings.sort(sortReportV1Finding);
 }
 
 export class TaskPackageService {
@@ -671,6 +782,13 @@ export class TaskPackageService {
       const transitionMode: TransitionMode = revisionNetDeltaOptions?.mode ?? 'best_effort';
       const auditRecordEnabled = opts?.audit?.record === true;
       const auditReplayEnabled = opts?.audit?.replay === true;
+      const rawRiskPolicy = opts?.taskProfile?.riskPolicy ?? opts?.riskPolicy ?? DEFAULT_RISK_POLICY_V1;
+      const effectiveRiskPolicy = normalizeRiskPolicyV1(rawRiskPolicy);
+      if (!effectiveRiskPolicy) {
+        const riskPolicyError = new Error('Risk policy is invalid');
+        (riskPolicyError as { code?: string }).code = 'E_RISK_POLICY_INVALID';
+        throw riskPolicyError;
+      }
 
       const baseRevision: RevisionLike = {
         payload: currentPayload,
@@ -928,24 +1046,59 @@ export class TaskPackageService {
 
         const llmDelta = parseLLMDelta(llmDeltaRaw);
         const llmBaseState = revisionToSemanticState(baseRevision);
-        const llmTransition = applyDelta(llmBaseState, llmDelta, { mode: llmDeltaMode });
+        const closurePlan =
+          llmDeltaMode === 'strict'
+            ? planDeltaClosureV1({
+                baseState: llmBaseState,
+                proposedDelta: llmDelta,
+                mode: 'strict',
+                policy: effectiveRiskPolicy,
+              })
+            : null;
+        const closureContract =
+          closurePlan
+            ? buildClosureContractV1({
+                proposedDelta: llmDelta,
+                acceptedDelta: closurePlan.acceptedDelta,
+                rejected: closurePlan.rejected,
+                suggestions: closurePlan.suggestions,
+                diagnostics: closurePlan.diagnostics,
+              })
+            : null;
+        const appliedDelta = closurePlan ? closurePlan.acceptedDelta : llmDelta;
+        const llmTransition = applyDelta(llmBaseState, appliedDelta, {
+          mode: llmDeltaMode === 'strict' ? 'best_effort' : llmDeltaMode,
+        });
         const llmTransitionConflicts = [...llmTransition.conflicts].sort(sortTransitionConflict);
-
-        if (llmDeltaMode === 'strict' && llmTransitionConflicts.length > 0) {
-          const strictConflictError = new Error('LLM delta contains conflicts');
-          (strictConflictError as any).code = 'E_LLM_DELTA_CONFLICT';
-          throw strictConflictError;
-        }
-
         const llmPostApplyConflicts = detectTransitionConflicts(llmTransition.nextState).sort(sortTransitionConflict);
+
         const llmDeltaReport: NonNullable<ApplyReportV2['llmDelta']> = {
           mode: 'delta',
-          deltaSummary: summarizeDelta(llmDelta),
+          deltaSummary: summarizeDelta(appliedDelta),
           conflicts: llmTransitionConflicts,
           postApplyConflicts: llmPostApplyConflicts,
           stateHashBefore: stableHash(llmBaseState),
           stateHashAfter: stableHash(llmTransition.nextState),
-          delta: llmDelta,
+          delta: appliedDelta,
+          ...(closurePlan
+            ? {
+                closure: {
+                  schema: closurePlan.schema,
+                  policy: {
+                    schema: closurePlan.policy.schema,
+                    strict: { ...closurePlan.policy.strict },
+                  },
+                  acceptedSummary: summarizeDelta(closurePlan.acceptedDelta),
+                  rejectedCount: closurePlan.rejected.length,
+                  rejectedPreview: [...closurePlan.rejected].sort(sortClosureRejected).slice(0, 20),
+                  rejected: [...closurePlan.rejected].sort(sortClosureRejected),
+                  suggestions: [...closurePlan.suggestions].sort(sortClosureSuggestion),
+                  suggestionDiagnostics: closurePlan.suggestionDiagnostics,
+                  contractV1: closureContract!,
+                  diagnostics: closurePlan.diagnostics,
+                },
+              }
+            : {}),
         };
 
         applyReport = this.buildApplyReportV2(
@@ -958,6 +1111,28 @@ export class TaskPackageService {
           llmDeltaReport
         );
         applyReport = attachV1(applyReport, llmDeltaReport);
+        if (closurePlan && applyReport.v1) {
+          applyReport = {
+            ...applyReport,
+            v1: {
+              ...applyReport.v1,
+              findings: [
+                ...applyReport.v1.findings,
+                ...buildClosureDiagnosticsFindings(closurePlan.diagnostics, llmPostApplyConflicts.length > 0),
+                {
+                  code: 'SUGGESTIONS_EMITTED',
+                  count: closurePlan.suggestionDiagnostics.suggestionCount,
+                  message: 'Suggestions emitted',
+                },
+                {
+                  code: 'CLOSURE_CONTRACT_V1_EMITTED',
+                  count: closurePlan.suggestionDiagnostics.suggestionCount,
+                  message: 'Closure contract v1 emitted',
+                },
+              ].sort(sortReportV1Finding),
+            },
+          };
+        }
         applyReport = await attachExecutionAudit(applyReport, {
           delta: applyReport.llmDelta?.delta ?? null,
           replayBaseState: llmBaseState,
