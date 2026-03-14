@@ -1,6 +1,6 @@
 # Shadow Threads
 
-Shadow Threads records and verifies AI workflow state.
+Shadow Threads is infrastructure for recording, versioning, and replaying AI workflow state.
 
 It lets developers persist workflow artifacts, track state revisions,
 record model or tool executions, and replay those executions
@@ -19,13 +19,34 @@ Shadow Threads gives you four durable objects:
 - **Execution** - a recorded model or tool boundary with fixed inputs, outputs, status, and result hash.
 - **Replay** - a verification step that checks whether a stored execution boundary still matches exactly.
 
-The local server exposes these objects through `/api/v1`. The Python SDK, CLI, demos, and MCP server all use that same boundary.
+The local server exposes these objects through `/api/v1`. The Python SDK, CLI, demos, and MCP server all use that same boundary. Together these four objects form a verifiable workflow state graph and execution history.
+
+## What Shadow Threads produces
+
+Shadow Threads does not run the workflow itself. It records the workflow boundaries that matter and produces a verifiable workflow state graph and execution history.
+
+Together, artifacts, revisions, and executions form a workflow state graph and execution history that can be inspected, transferred, and replayed.
+
+Users get:
+
+- content-addressed workflow payloads as **artifacts**
+- workflow state snapshots as **revisions**
+- execution records and replay boundaries as **executions**
+
+## How Shadow Threads integrates with AI workflows
+
+Shadow Threads does not orchestrate workflows for you. Your workflow continues to run normally, and you integrate Shadow Threads through SDK, API, CLI, or MCP calls at the boundaries you want to preserve. Common integration points include capturing workflow state, creating revisions after state transitions, recording model or tool executions, and recording workflow completion or failure. For concrete patterns, see [`docs/integration-patterns.md`](docs/integration-patterns.md).
 
 ## Demo
 
-This repository contains the core Shadow Threads system: protocol, server runtime, SDK, MCP integration, and local demos. If you want the quickest way to see the product behavior in practice, use the focused public demo repository for a deterministic AI-assisted coding workflow: https://github.com/ZetongDu/shadowthreads-demo-coding-workflow. That demo shows AI coding workflow state, revision lineage, execution replay, and replay verification in one place.
+This repository contains the core Shadow Threads system: protocol, server runtime, SDK, MCP integration, and local demos.
 
-## Install instructions
+If you want the fastest way to see the product behavior in practice, use the focused public demo repository for a deterministic AI-assisted coding workflow:
+https://github.com/ZetongDu/shadowthreads-demo-coding-workflow
+
+That demo shows AI coding workflow state, revision lineage, execution replay, and replay verification in one place.
+
+## Quickstart
 
 ### Prerequisites
 
@@ -41,7 +62,7 @@ From the repository root:
 docker compose up -d postgres redis
 ```
 
-### Install and prepare the server
+### Build and start the server
 
 ```bash
 cd server
@@ -49,22 +70,6 @@ npm ci
 npm run prisma:generate
 npm run prisma:migrate
 npm run build
-```
-
-### Install the Python SDK
-
-From the repository root:
-
-```bash
-pip install -e python-sdk
-```
-
-## Run server instructions
-
-Start the API server in a separate terminal:
-
-```bash
-cd server
 npm run start
 ```
 
@@ -75,6 +80,24 @@ http://localhost:3001
 ```
 
 The Python SDK also respects `SHADOW_SERVER` if you want to point to a different base URL.
+
+### Install the Python SDK
+
+From the repository root:
+
+```bash
+pip install -e python-sdk
+```
+
+### Run the minimal example
+
+Save the example below as `first_run.py` and run:
+
+```bash
+python first_run.py
+```
+
+A successful run prints `True` from `replay.verified`. If you also print IDs and hashes, you should see a 64-character artifact hash, a 64-character revision hash, a UUID execution ID, and a 64-character result hash.
 
 ## Ultra minimal Python example
 
@@ -127,48 +150,6 @@ with ShadowClient(base_url="http://localhost:3001") as client:
     replay = client.replay_execution(execution.execution_id)
     print(replay.verified)
 ```
-
-## First successful run
-
-This is the shortest reliable path for a fresh checkout.
-
-1. Start Postgres and Redis:
-
-   ```bash
-   docker compose up -d postgres redis
-   ```
-
-2. Build and prepare the server:
-
-   ```bash
-   cd server
-   npm ci
-   npm run prisma:generate
-   npm run prisma:migrate
-   npm run build
-   npm run start
-   ```
-
-3. In another terminal, install the SDK:
-
-   ```bash
-   pip install -e python-sdk
-   ```
-
-4. Save the example above as `first_run.py` and run:
-
-   ```bash
-   python first_run.py
-   ```
-
-A successful run prints `True` from `replay.verified`. If you expand the example to print IDs and hashes, you should see:
-
-- a 64-character `artifact_bundle_hash`
-- a 64-character `revision_hash`
-- a UUID `execution_id`
-- a 64-character `result_hash`
-
-That confirms a full record plus replay cycle against the local API.
 
 ## Core concepts
 
@@ -227,50 +208,13 @@ Revisions represent snapshots of workflow state, and artifacts contain the paylo
 
 Execution records provide an audit trail for agent workflows. Developers can inspect prompt hashes, parameters, and artifact boundaries to understand how an agent arrived at a state. This is useful for debugging complex agent workflows, tracing tool calls, and auditing reasoning chains across multi-step runs. The audit surface stays tied to recorded boundaries rather than informal logs or recollection.
 
-## Metadata reference
+### Branchable workflow state
 
-### RevisionMetadata
+Revisions form a deterministic DAG, so a workflow can branch from any valid parent without mutating the original state history. Each branch keeps its own revision lineage while preserving the shared ancestry that led to the fork point. This lets developers explore alternative reasoning paths without polluting the main workflow history. Typical cases include exploring multiple solution strategies, testing alternative agent tool calls, and running parallel reasoning branches from the same saved state. The branch boundary is explicit in the revision graph, which keeps divergence inspectable and reversible.
 
-`RevisionMetadata` requires these fields:
+## Reference details
 
-| Field | Required | Meaning |
-| --- | --- | --- |
-| `author` | yes | Human-readable author label for the revision |
-| `message` | yes | Short description of why the revision exists |
-| `created_by` / `createdBy` | yes | Concrete actor or tool that created the revision |
-| `timestamp` | yes | ISO 8601 timestamp with timezone offset |
-| `source` | yes | One of `human`, `ai`, `migration`, `system` |
-| `tags` | optional | List of short labels; defaults to `[]` |
-
-In the Python SDK, the dataclass field is `created_by`. The SDK serializes it to the API field `createdBy`.
-
-### prompt_hash
-
-`prompt_hash` is the deterministic identity of the prompt boundary used for an execution. Expected format:
-
-- 64 lowercase hexadecimal characters
-- often `sha256(prompt_bytes).hexdigest()`
-
-Purpose:
-
-- binds the execution record to the exact prompt boundary that was used
-- allows replay to reject non-deterministic changes before comparing outputs
-- prevents silent drift between recorded execution inputs and later verification
-
-The system does not enforce how the hash is generated. It only requires that the same prompt produces the same hash.
-
-### Timestamp format
-
-`timestamp`, `started_at`, and `finished_at` must be ISO 8601 strings with an explicit timezone offset.
-
-Accepted examples:
-
-```text
-2026-03-12T09:00:00+00:00
-2026-03-12T09:00:00Z
-```
-
-Do not omit the timezone.
+For metadata and field-level reference details, see [`docs/reference.md`](docs/reference.md).
 
 ## When should you use Shadow Threads?
 
@@ -285,12 +229,7 @@ Use Shadow Threads when you need:
 
 ## Demo references
 
-Two repository demos exercise the same runtime from different angles:
-
-- `demo/demoA-task-state` - task-state capture, revision history, and replay verification
-- `demo/demoB-workflow-debug` - workflow debugging with execution replay and inspection
-
-See `demo/README.md` for run commands.
+Additional local demos are available under [`demo/`](demo/). See [`demo/README.md`](demo/README.md) for the task-state and workflow-debug examples.
 
 ## MCP support
 
@@ -316,7 +255,7 @@ Exposed tools include artifact capture, revision creation, execution recording, 
 
 ```mermaid
 flowchart LR
-    A[Python SDK / CLI / MCP] --> B[/api/v1 Local HTTP API]
+    A[Python SDK / CLI / MCP] --> B["/api/v1 Local HTTP API"]
     B --> C[Artifact Store]
     B --> D[Revision DAG]
     B --> E[Execution Records]
@@ -338,21 +277,9 @@ Redis is used for runtime coordination and execution tracking.
 - Export and import migration packages with closure verification.
 - Expose the same workflow boundary to local tools, SDK clients, CLI users, and MCP-compatible agents.
 
-## Selftest Matrix
+## Development
 
-Shadow Threads selftests are organized into three execution tiers:
+For selftest tiers and development-oriented validation commands, see [`docs/development.md`](docs/development.md).
 
-- `selftest:fast` - fast checks for active development and small changes.
-- `selftest:core` - core runtime regression checks before merging logic changes.
-- `selftest:full` - full regression checks, including HTTP E2E flows, before milestones or release candidates.
-
-Example commands:
-
-```bash
-npm run build
-npm run selftest:fast
-npm run selftest:core
-npm run selftest:full
-```
 
 
