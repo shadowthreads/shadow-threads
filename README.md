@@ -42,7 +42,7 @@ Shadow Threads does not orchestrate workflows for you. Your workflow continues t
 This repository contains the core Shadow Threads system: protocol, server runtime, SDK, MCP integration, and local demos.
 
 If you want the fastest way to see the product behavior in practice, use the focused public demo repository for a deterministic AI-assisted coding workflow:
-https://github.com/ZetongDu/shadowthreads-demo-coding-workflow
+https://github.com/shadowthreads/shadowthreads-demo-coding-workflow
 
 That demo shows AI coding workflow state, revision lineage, execution replay, and replay verification in one place.
 
