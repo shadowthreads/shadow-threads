@@ -46,12 +46,21 @@ https://github.com/shadowthreads/shadowthreads-demo-coding-workflow
 
 That demo shows AI coding workflow state, revision lineage, execution replay, and replay verification in one place.
 
-**Deployment model
+## Deployment model
 
-Shadow Threads is currently designed to be self-hosted.
+Shadow Threads is currently intended for self-hosted use in local or controlled environments.
 
-Developers run the backend locally or in their own environment,
-then connect their workflows through the SDK, API, CLI, or MCP layer.
+If deployed beyond localhost, users should add appropriate authentication, network restrictions, secret management, and database hardening.
+
+## Security considerations
+
+Shadow Threads records workflow state, artifacts, and execution boundaries for AI workflows.
+
+Depending on the workflow, this may include prompts, intermediate tool outputs, or other runtime data.
+
+Users deploying Shadow Threads should treat the backend and database as sensitive infrastructure and apply appropriate security practices, including authentication, network isolation, and secure database configuration.
+
+Shadow Threads is currently intended for self-hosted use in controlled environments.
 
 ## Quickstart
 
