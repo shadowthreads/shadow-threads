@@ -62,7 +62,7 @@ From the repository root:
 docker compose up -d postgres redis
 ```
 
-### Build and start the server
+### Build and start the server (run from server/)
 
 ```bash
 cd server
