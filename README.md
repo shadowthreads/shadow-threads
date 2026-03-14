@@ -46,6 +46,11 @@ https://github.com/ZetongDu/shadowthreads-demo-coding-workflow
 
 That demo shows AI coding workflow state, revision lineage, execution replay, and replay verification in one place.
 
+Shadow Threads is currently designed to be self-hosted.
+
+Developers run the backend locally or in their own environment,
+then connect their workflows through the SDK, API, CLI, or MCP layer.
+
 ## Quickstart
 
 ### Prerequisites
