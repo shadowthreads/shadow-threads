@@ -20,10 +20,9 @@ import revisionRoutes from './routes/revision.routes';
 import executionRoutes from './routes/execution.routes';
 import migrationRoutes from './routes/migration.routes';
 
-console.log("[BOOT] DATABASE_URL =", process.env.DATABASE_URL);
-
 async function bootstrap() {
   const app = express();
+  logger.info('Database configuration loaded');
   
   // ============================================
   // 基础中间件
@@ -54,7 +53,7 @@ async function bootstrap() {
         callback(null, true);
       } else {
         logger.warn('CORS blocked', { origin });
-        callback(null, true); // 开发阶段暂时允许所有
+        callback(null, false);
       }
     },
     credentials: true,
