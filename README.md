@@ -46,6 +46,11 @@ https://github.com/ZetongDu/shadowthreads-demo-coding-workflow
 
 That demo shows AI coding workflow state, revision lineage, execution replay, and replay verification in one place.
 
+## Deployment model
+
+Shadow Threads is currently designed for trusted local or controlled self-hosted environments. The current server exposes workflow APIs intended for local development and controlled infrastructure, and it does not yet provide production-grade authentication, authorization, or hardened network defaults.
+
+Shadow Threads should not be exposed to the public Internet as-is. If deploying beyond localhost, operators must add authentication and authorization, restrict network access, tighten CORS policies, secure PostgreSQL and Redis, and manage secrets outside development defaults.
 ## Quickstart
 
 ### Prerequisites
