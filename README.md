@@ -42,15 +42,29 @@ Shadow Threads does not orchestrate workflows for you. Your workflow continues t
 This repository contains the core Shadow Threads system: protocol, server runtime, SDK, MCP integration, and local demos.
 
 If you want the fastest way to see the product behavior in practice, use the focused public demo repository for a deterministic AI-assisted coding workflow:
-https://github.com/ZetongDu/shadowthreads-demo-coding-workflow
+https://github.com/shadowthreads/shadowthreads-demo-coding-workflow
 
 That demo shows AI coding workflow state, revision lineage, execution replay, and replay verification in one place.
 
 ## Deployment model
 
-Shadow Threads is currently designed for trusted local or controlled self-hosted environments. The current server exposes workflow APIs intended for local development and controlled infrastructure, and it does not yet provide production-grade authentication, authorization, or hardened network defaults.
+Shadow Threads is currently designed for trusted local or controlled self-hosted environments.
 
-Shadow Threads should not be exposed to the public Internet as-is. If deploying beyond localhost, operators must add authentication and authorization, restrict network access, tighten CORS policies, secure PostgreSQL and Redis, and manage secrets outside development defaults.
+The current server exposes workflow APIs intended for local development and controlled infrastructure, and it does not yet provide production-grade authentication, authorization, or hardened network defaults.
+
+Shadow Threads should not be exposed to the public Internet as-is.
+
+If deploying beyond localhost, operators must add authentication and authorization, restrict network access, tighten CORS policies, secure PostgreSQL and Redis, and manage secrets outside development defaults.
+
+## Security considerations
+
+Shadow Threads records workflow state, artifacts, and execution boundaries for AI workflows.
+
+Depending on the workflow, this may include prompts, intermediate tool outputs, or other runtime data.
+
+Users deploying Shadow Threads should treat the backend and database as sensitive infrastructure and apply appropriate security practices, including authentication, network isolation, and secure database configuration.
+
+Shadow Threads is currently intended for self-hosted use in controlled environments.
 ## Quickstart
 
 ### Prerequisites
@@ -67,7 +81,7 @@ From the repository root:
 docker compose up -d postgres redis
 ```
 
-### Build and start the server
+### Build and start the server (run from server/)
 
 ```bash
 cd server
@@ -285,6 +299,8 @@ Redis is used for runtime coordination and execution tracking.
 ## Development
 
 For selftest tiers and development-oriented validation commands, see [`docs/development.md`](docs/development.md).
+
+If Shadowthreads is useful, consider giving it a star ⭐
 
 
 
