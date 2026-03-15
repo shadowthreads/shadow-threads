@@ -48,9 +48,13 @@ That demo shows AI coding workflow state, revision lineage, execution replay, an
 
 ## Deployment model
 
-Shadow Threads is currently intended for self-hosted use in local or controlled environments.
+Shadow Threads is currently designed for trusted local or controlled self-hosted environments.
 
-If deployed beyond localhost, users should add appropriate authentication, network restrictions, secret management, and database hardening.
+The current server exposes workflow APIs intended for local development and controlled infrastructure, and it does not yet provide production-grade authentication, authorization, or hardened network defaults.
+
+Shadow Threads should not be exposed to the public Internet as-is.
+
+If deploying beyond localhost, operators must add authentication and authorization, restrict network access, tighten CORS policies, secure PostgreSQL and Redis, and manage secrets outside development defaults.
 
 ## Security considerations
 
@@ -61,7 +65,6 @@ Depending on the workflow, this may include prompts, intermediate tool outputs, 
 Users deploying Shadow Threads should treat the backend and database as sensitive infrastructure and apply appropriate security practices, including authentication, network isolation, and secure database configuration.
 
 Shadow Threads is currently intended for self-hosted use in controlled environments.
-
 ## Quickstart
 
 ### Prerequisites
